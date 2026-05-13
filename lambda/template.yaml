@@ -36,6 +36,12 @@ Parameters:
     MaxValue: 3650
     Description: Days before DynamoDB automatically expires stored transactions
 
+  LambdaRoleArn:
+    Type: String
+    Description: >
+      ARN of the existing IAM role to attach to the Lambda function.
+      In AWS Academy Learner Labs use: arn:aws:iam::<account-id>:role/LabRole
+
 # ── Globals ───────────────────────────────────────────────────────────────────
 
 Globals:
@@ -174,7 +180,8 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub payalert-transaction-processor-${Environment}
-      CodeUri: transaction-processor/
+      # CodeUri: transaction-processor/
+      CodeUri: s3://payalert-artifacts-590184107213/function.zip
       Handler: handler.lambda_handler
       Description: >
         Reads transaction batches from SQS, writes to DynamoDB, and publishes
@@ -185,13 +192,7 @@ Resources:
           ALERT_TOPIC_ARN: !Ref AlertTopic
           ALERT_RISK_THRESHOLD: !Ref AlertRiskThreshold
           TTL_DAYS: !Ref TransactionTTLDays
-      Policies:
-        - DynamoDBWritePolicy:
-            TableName: !Ref TransactionsTable
-        - SNSPublishMessagePolicy:
-            TopicName: !GetAtt AlertTopic.TopicName
-        - SQSPollerPolicy:
-            QueueName: !GetAtt TransactionQueue.QueueName
+      Role: !Ref LambdaRoleArn
       Events:
         SQSTrigger:
           Type: SQS

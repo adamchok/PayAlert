@@ -116,12 +116,17 @@ Save the file.
 5. Fill in the parameters:
 
 
-| Parameter            | Value                   |
-| -------------------- | ----------------------- |
-| `Environment`        | `dev`                   |
-| `AlertEmail`         | your real email address |
-| `AlertRiskThreshold` | `50`                    |
-| `TransactionTTLDays` | `90`                    |
+| Parameter            | Value                                                        |
+| -------------------- | ------------------------------------------------------------ |
+| `Environment`        | `dev`                                                        |
+| `AlertEmail`         | your real email address                                      |
+| `AlertRiskThreshold` | `50`                                                         |
+| `TransactionTTLDays` | `90`                                                         |
+| `LambdaRoleArn`      | `arn:aws:iam::<your-account-id>:role/LabRole`                |
+
+> **AWS Academy Learner Labs:** You cannot create IAM roles in this environment. The `LambdaRoleArn` parameter lets you supply the pre-existing `LabRole` instead. Find your account ID in the top-right corner of the AWS Console — it is the 12-digit number shown next to your username. The full ARN to paste is `arn:aws:iam::<account-id>:role/LabRole`.
+>
+> **Note:** Learner Lab account IDs change between sessions. If you redeploy after restarting a lab, update this parameter with the new account ID.
 
 
 1. **Next** → **Next**.
@@ -222,10 +227,11 @@ chmod 400 ~/Downloads/payalert-key.pem
 3. Add the following inbound rules:
 
 
-| Type       | Port | Source | Purpose                                       |
-| ---------- | ---- | ------ | --------------------------------------------- |
-| SSH        | 22   | My IP  | Terminal access                               |
-| Custom TCP | 5000 | My IP  | Audit portal (or `0.0.0.0/0` for demo access) |
+| Type       | Port | Source | Purpose                                             |
+| ---------- | ---- | ------ | --------------------------------------------------- |
+| SSH        | 22   | My IP  | Terminal access                                     |
+| Custom TCP | 5001 | My IP  | Generator web UI (or `0.0.0.0/0` for demo access)   |
+| Custom TCP | 3000 | My IP  | Audit portal (or `0.0.0.0/0` for demo access)       |
 
 
 1. **Create security group**.
@@ -367,85 +373,47 @@ Press `Ctrl+C` to stop following logs (the service keeps running).
 
 ---
 
-## Step 5 — Set up the audit portal
+## Step 5 — Set up the generator web UI
 
-All commands in this section run **on the EC2 instance** unless noted otherwise.
+The web UI (`app.py`) lives in the same `transaction-generator` directory already deployed in Step 4 — no additional file copying or dependency installation is needed. It provides a browser-based control panel to start/stop the transaction stream, switch modes (stream/batch/fraud), and watch live logs via Server-Sent Events.
 
-### 5.1 Copy the audit portal to the instance
+All commands in this section run **on the EC2 instance**.
 
-Run this **on your workstation**:
-
-```bash
-scp -i ~/Downloads/payalert-key.pem -r \
-  ./audit-portal \
-  ubuntu@<PUBLIC_IP>:/tmp/
-```
-
-Back on the EC2 instance:
+### 5.1 Run a quick test
 
 ```bash
-sudo mv /tmp/audit-portal /opt/payalert/audit-portal
-sudo chown -R ubuntu:ubuntu /opt/payalert/audit-portal
-```
-
-### 5.2 Install Python dependencies
-
-```bash
-cd /opt/payalert/audit-portal
-python3 -m venv .venv
+cd /opt/payalert/transaction-generator
 source .venv/bin/activate
-pip install -r requirements.txt
-deactivate
-```
-
-### 5.3 Create the environment file
-
-```bash
-sudo tee /opt/payalert/portal.env > /dev/null <<'EOF'
-ENVIRONMENT=dev
-AWS_REGION=ap-southeast-1
-DYNAMODB_TABLE=payalert-transactions-dev
-PORT=5000
-FLASK_SECRET_KEY=change-this-to-a-long-random-string
-EOF
-```
-
-### 5.4 Run a quick test
-
-```bash
-cd /opt/payalert/audit-portal
-source .venv/bin/activate
-export $(cat /opt/payalert/portal.env | xargs)
+export $(cat /opt/payalert/generator.env | xargs)
 python3 app.py
 ```
 
 You should see:
 
 ```
- * Running on http://0.0.0.0:5000
+ * Running on http://0.0.0.0:5001
 ```
 
-Open `http://<PUBLIC_IP>:5000` in a browser. The dashboard should load (it may show no transactions if the generator has not sent any yet). Press `Ctrl+C` to stop.
+Open `http://<PUBLIC_IP>:5001` in a browser. The control panel should load showing the queue URL and available accounts. Press `Ctrl+C` to stop.
 
 ```bash
 deactivate
 ```
 
-### 5.5 Create the systemd service
+### 5.2 Create the systemd service
 
 ```bash
 sudo tee /etc/systemd/system/payalert-portal.service > /dev/null <<'EOF'
 [Unit]
-Description=PayAlert Audit Portal
+Description=PayAlert Generator Web UI
 After=network.target
 
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/opt/payalert/audit-portal
-ExecStart=/opt/payalert/audit-portal/.venv/bin/gunicorn \
-    --bind 0.0.0.0:5000 --workers 2 app:app
-EnvironmentFile=/opt/payalert/portal.env
+WorkingDirectory=/opt/payalert/transaction-generator
+ExecStart=/opt/payalert/transaction-generator/.venv/bin/python3 app.py
+EnvironmentFile=/opt/payalert/generator.env
 Restart=on-failure
 RestartSec=5s
 StandardOutput=journal
@@ -460,15 +428,116 @@ sudo systemctl enable --now payalert-portal
 sudo systemctl status payalert-portal
 ```
 
-The portal is now running on `http://<PUBLIC_IP>:5000` and will restart automatically on reboot.
+The web UI is now running on `http://<PUBLIC_IP>:5001` and will restart automatically on reboot.
 
 ---
 
-## Step 6 — End-to-end smoke test
+## Step 6 — Set up the audit portal
+
+The audit portal is a Next.js 16 app that reads from DynamoDB and gives fraud analysts a live dashboard to browse transactions by date, account, and risk level.
+
+All commands in this section run **on the EC2 instance** unless noted otherwise.
+
+### 6.1 Install Node.js 20
+
+Ubuntu 26.04 ships with an older Node.js. Install the LTS version via NodeSource:
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+node --version   # should print v20.x.x
+```
+
+### 6.2 Copy the audit portal to the instance
+
+Run this **on your workstation**:
+
+```bash
+scp -i ~/Downloads/payalert-key.pem -r \
+  ./audit-portal-v2 \
+  ubuntu@<PUBLIC_IP>:/tmp/
+```
+
+Back on the EC2 instance:
+
+```bash
+sudo mv /tmp/audit-portal-v2 /opt/payalert/audit-portal-v2
+sudo chown -R ubuntu:ubuntu /opt/payalert/audit-portal-v2
+```
+
+### 6.3 Create the environment file
+
+```bash
+cat > /opt/payalert/audit-portal-v2/.env.local <<'EOF'
+DYNAMODB_TABLE=payalert-transactions
+AWS_REGION=us-east-1
+NEXT_PUBLIC_ENVIRONMENT=prod
+EOF
+```
+
+> Replace `AWS_REGION` and `DYNAMODB_TABLE` with the values matching your deployment if they differ.
+
+### 6.4 Install dependencies and build
+
+```bash
+cd /opt/payalert/audit-portal-v2
+npm install
+npm run build
+```
+
+The build takes 1–2 minutes. You should see a `✓ Compiled successfully` message at the end.
+
+### 6.5 Run a quick test
+
+```bash
+npm start
+```
+
+You should see:
+
+```
+▶ Local: http://localhost:3000
+```
+
+Open `http://<PUBLIC_IP>:3000` in a browser. The dashboard should load. Press `Ctrl+C` to stop.
+
+### 6.6 Create the systemd service
+
+```bash
+sudo tee /etc/systemd/system/payalert-audit-portal.service > /dev/null <<'EOF'
+[Unit]
+Description=PayAlert Audit Portal
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/payalert/audit-portal-v2
+ExecStart=/usr/bin/npm start
+EnvironmentFile=/opt/payalert/audit-portal-v2/.env.local
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now payalert-audit-portal
+sudo systemctl status payalert-audit-portal
+```
+
+The audit portal is now running on `http://<PUBLIC_IP>:3000` and will restart automatically on reboot.
+
+---
+
+## Step 7 — End-to-end smoke test
 
 By this point the generator is continuously pushing transactions to SQS and the portal is live. This step verifies each layer of the pipeline.
 
-### 6.1 Verify Lambda is processing
+### 7.1 Verify Lambda is processing
 
 1. **[CloudWatch Console](https://ap-southeast-1.console.aws.amazon.com/cloudwatch/home?region=ap-southeast-1#logsV2:log-groups)** → log group `/aws/lambda/payalert-transaction-processor-dev`.
 2. Select the most recent log stream.
@@ -478,21 +547,29 @@ By this point the generator is continuously pushing transactions to SQS and the 
 Stored transaction=<uuid> account=ACC-MY-4F291A3B riskScore=12 riskLevel=LOW isFlagged=False
 ```
 
-### 6.2 Verify DynamoDB is being populated
+### 7.2 Verify DynamoDB is being populated
 
 1. **[DynamoDB Console](https://ap-southeast-1.console.aws.amazon.com/dynamodbv2/home?region=ap-southeast-1#tables)** → `payalert-transactions-dev` → **Explore table items**.
 2. Records should be visible and accumulating.
 
-### 6.3 Check the audit portal
+### 7.3 Check the generator web UI
 
-Open `http://<PUBLIC_IP>:5000` in a browser.
+Open `http://<PUBLIC_IP>:5001` in a browser.
+
+- The control panel shows the configured queue URL and available accounts.
+- Click **Start** to begin streaming transactions; live logs appear in the browser.
+- Switch between **Stream**, **Batch**, and **Fraud** modes using the controls.
+
+### 7.4 Check the audit portal
+
+Open `http://<PUBLIC_IP>:3000` in a browser.
 
 - The **Dashboard** shows today's transaction count and the HIGH / CRITICAL breakdown.
 - Click **Transactions** in the navbar to see the full list.
 - Click any **Account ID** to see that account's full transaction history.
 - Click any **Transaction ID** to see the full detail view.
 
-### 6.4 Trigger a fraud alert email
+### 7.5 Trigger a fraud alert email
 
 Send a CRITICAL test transaction via the SQS Console to verify the SNS email path:
 
@@ -539,7 +616,7 @@ Within 30 seconds:
 - The transaction appears on the audit portal dashboard highlighted in red.
 - You receive a `[PayAlert] CRITICAL Risk` email at the address set during stack deployment.
 
-### 6.5 Verify the DLQ is empty
+### 7.6 Verify the DLQ is empty
 
 Normal operation should produce zero DLQ messages.
 
@@ -549,7 +626,7 @@ Any non-zero value means a transaction failed processing three times. Investigat
 
 ---
 
-## Step 7 — Run in fraud mode
+## Step 8 — Run in fraud mode
 
 To generate a higher volume of flagged transactions for audit portal demonstrations:
 
@@ -582,8 +659,8 @@ sudo systemctl start payalert-generator
 On the EC2 instance:
 
 ```bash
-sudo systemctl stop payalert-generator payalert-portal
-sudo systemctl disable payalert-generator payalert-portal
+sudo systemctl stop payalert-generator payalert-portal payalert-audit-portal
+sudo systemctl disable payalert-generator payalert-portal payalert-audit-portal
 ```
 
 ### Delete the Lambda stack
@@ -647,12 +724,13 @@ To clean up the S3 artifacts bucket:
 # View live logs
 sudo journalctl -u payalert-generator -f
 sudo journalctl -u payalert-portal -f
+sudo journalctl -u payalert-audit-portal -f
 
 # Restart services
-sudo systemctl restart payalert-generator payalert-portal
+sudo systemctl restart payalert-generator payalert-portal payalert-audit-portal
 
 # Check status
-sudo systemctl status payalert-generator payalert-portal
+sudo systemctl status payalert-generator payalert-portal payalert-audit-portal
 ```
 
 ### Updating after a code change
@@ -666,17 +744,21 @@ sudo systemctl status payalert-generator payalert-portal
 **Template / infrastructure change:**
 
 1. **CloudFormation** → `payalert-dev` → **Update** → **Replace current template** → upload the modified `template.yaml`.
-2. Review the changeset and confirm.
+2. On the parameters page, re-enter `LambdaRoleArn` (`arn:aws:iam::<account-id>:role/LabRole`) — CloudFormation does not remember it between updates in Learner Labs.
+3. Review the changeset and confirm.
 
 **EC2 application change:**
 
 ```bash
-# Copy new files to the instance
+# Copy new generator files to the instance
 scp -i ~/Downloads/payalert-key.pem -r ./transaction-generator ubuntu@<PUBLIC_IP>:/opt/payalert/
-scp -i ~/Downloads/payalert-key.pem -r ./audit-portal       ubuntu@<PUBLIC_IP>:/opt/payalert/
+sudo systemctl restart payalert-generator payalert-portal
 
-# Restart the affected service
-sudo systemctl restart payalert-generator   # or payalert-portal
+# Copy new audit portal files, rebuild, then restart
+scp -i ~/Downloads/payalert-key.pem -r ./audit-portal-v2 ubuntu@<PUBLIC_IP>:/opt/payalert/
+ssh -i ~/Downloads/payalert-key.pem ubuntu@<PUBLIC_IP> \
+  "cd /opt/payalert/audit-portal-v2 && npm install && npm run build"
+sudo systemctl restart payalert-audit-portal
 ```
 
 ### Minimum IAM permissions for the deploying identity
