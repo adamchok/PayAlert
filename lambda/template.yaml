@@ -69,6 +69,8 @@ Resources:
       Tags:
         - Key: Project
           Value: PayAlert
+        - Key: Group
+          Value: payalert-group-4
         - Key: Environment
           Value: !Ref Environment
 
@@ -88,6 +90,8 @@ Resources:
       Tags:
         - Key: Project
           Value: PayAlert
+        - Key: Group
+          Value: payalert-group-4
         - Key: Environment
           Value: !Ref Environment
 
@@ -152,6 +156,8 @@ Resources:
       Tags:
         - Key: Project
           Value: PayAlert
+        - Key: Group
+          Value: payalert-group-4
         - Key: Environment
           Value: !Ref Environment
 
@@ -164,6 +170,8 @@ Resources:
       Tags:
         - Key: Project
           Value: PayAlert
+        - Key: Group
+          Value: payalert-group-4
         - Key: Environment
           Value: !Ref Environment
 
@@ -180,8 +188,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub payalert-transaction-processor-${Environment}
-      # CodeUri: transaction-processor/
-      CodeUri: s3://payalert-artifacts-590184107213/function.zip
+      CodeUri: transaction-processor/
       Handler: handler.lambda_handler
       Description: >
         Reads transaction batches from SQS, writes to DynamoDB, and publishes
@@ -207,6 +214,7 @@ Resources:
               MaximumConcurrency: 10
       Tags:
         Project: PayAlert
+        Group: payalert-group-4
         Environment: !Ref Environment
 
   TransactionProcessorLogGroup:
@@ -214,6 +222,13 @@ Resources:
     Properties:
       LogGroupName: !Sub /aws/lambda/payalert-transaction-processor-${Environment}
       RetentionInDays: 30
+      Tags:
+        - Key: Project
+          Value: PayAlert
+        - Key: Group
+          Value: payalert-group-4
+        - Key: Environment
+          Value: !Ref Environment
 
   # ── CloudWatch Alarms ────────────────────────────────────────────────────────
 
@@ -237,6 +252,13 @@ Resources:
       AlarmActions:
         - !Ref AlertTopic
       TreatMissingData: notBreaching
+      Tags:
+        - Key: Project
+          Value: PayAlert
+        - Key: Group
+          Value: payalert-group-4
+        - Key: Environment
+          Value: !Ref Environment
 
   ProcessorErrorRateAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -256,6 +278,13 @@ Resources:
       AlarmActions:
         - !Ref AlertTopic
       TreatMissingData: notBreaching
+      Tags:
+        - Key: Project
+          Value: PayAlert
+        - Key: Group
+          Value: payalert-group-4
+        - Key: Environment
+          Value: !Ref Environment
 
   ProcessorThrottleAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -275,6 +304,13 @@ Resources:
       AlarmActions:
         - !Ref AlertTopic
       TreatMissingData: notBreaching
+      Tags:
+        - Key: Project
+          Value: PayAlert
+        - Key: Group
+          Value: payalert-group-4
+        - Key: Environment
+          Value: !Ref Environment
 
 # ── Outputs ───────────────────────────────────────────────────────────────────
 

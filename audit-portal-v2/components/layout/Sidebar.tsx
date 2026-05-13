@@ -2,12 +2,13 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, List, Shield, ChevronLeft, ChevronRight } from 'lucide-react'
+import { LayoutDashboard, List, Shield, ChevronLeft, ChevronRight, AlertOctagon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/transactions', label: 'Transactions', icon: List },
+  { href: '/dlq', label: 'Dead Letter Queue', icon: AlertOctagon },
 ]
 
 interface SidebarProps {

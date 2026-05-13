@@ -489,6 +489,7 @@ def build_description(tx_type: str, merchant: dict, account: dict, recipient: di
 def generate_transaction(
     target_account: dict | None = None,
     fraud_mode: bool = False,
+    dlq_fail_rate: float = 0.0,
 ) -> dict[str, Any]:
     """Build a single enriched transaction payload."""
 
@@ -631,6 +632,9 @@ def generate_transaction(
         payload["transferPurpose"]    = random.choice(TRANSFER_PURPOSES)
     if fraud_scenario:
         payload["fraudScenario"] = fraud_scenario
+
+    if dlq_fail_rate > 0.0 and random.random() < dlq_fail_rate:
+        payload["_forceFail"] = True
 
     return payload
 

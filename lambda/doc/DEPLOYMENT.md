@@ -169,15 +169,15 @@ Transaction Generator
         ▼  SQS send-message
 ┌─────────────────────────────────────┐
 │  payalert-transactions-queue        │
-│  (VisibilityTimeout 180s, DLQ × 3) │
+│  (VisibilityTimeout 180s, DLQ × 3)  │
 └───────────────┬─────────────────────┘
                 │ SQS trigger (batch 10)
                 ▼
 ┌───────────────────────────────────────────┐
 │  Lambda: payalert-transaction-processor   │
-│  Python 3.11 · arm64 · 256 MB · 30s      │
+│  Python 3.11 · arm64 · 256 MB · 30s       │
 │  ReportBatchItemFailures enabled          │
-└──────────┬──────────────────┬────────────┘
+└──────────┬──────────────────┬─────────────┘
            │ PutItem          │ Publish (riskScore >= threshold)
            ▼                  ▼
 ┌──────────────────┐   ┌──────────────────┐

@@ -17,6 +17,8 @@ import threading
 from datetime import datetime
 
 from flask import Flask, Response, jsonify, render_template, request
+from flask_httpauth import HTTPBasicAuth
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from generator import (
     ACCOUNTS,
@@ -33,8 +35,19 @@ from generator import (
 )
 
 app = Flask(__name__)
+auth = HTTPBasicAuth()
 
 ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
+
+_UI_USERNAME = os.getenv("UI_USERNAME", "admin")
+_UI_PASSWORD_HASH = generate_password_hash(os.getenv("UI_PASSWORD", "changeme"))
+
+
+@auth.verify_password
+def verify_password(username: str, password: str) -> str | None:
+    if username == _UI_USERNAME and check_password_hash(_UI_PASSWORD_HASH, password):
+        return username
+    return None
 
 # ── SSE pub-sub ───────────────────────────────────────────────────────────────
 
@@ -116,18 +129,19 @@ def _stream_worker(cfg: dict) -> None:
             return
 
     log.info(
-        "Stream started | interval=[%.1fs–%.1fs] burst=[%d–%d] fraud=%s dry_run=%s",
+        "Stream started | interval=[%.1fs–%.1fs] burst=[%d–%d] fraud=%s dlq_fail_rate=%.0f%% dry_run=%s",
         cfg["min_interval"], cfg["max_interval"],
         cfg["burst_min"], cfg["burst_max"],
-        cfg["fraud_mode"], cfg["dry_run"],
+        cfg["fraud_mode"], cfg["dlq_fail_rate"] * 100, cfg["dry_run"],
     )
 
     target = cfg.get("target_account")
     fraud  = cfg["fraud_mode"]
+    dlq_rate = cfg["dlq_fail_rate"]
 
     while not _stop_event.is_set():
         burst = random.randint(cfg["burst_min"], cfg["burst_max"])
-        msgs  = [generate_transaction(target, fraud) for _ in range(burst)]
+        msgs  = [generate_transaction(target, fraud, dlq_rate) for _ in range(burst)]
 
         if cfg["dry_run"]:
             log.info("[DRY-RUN] Generated %d tx | IDs: %s",
@@ -167,8 +181,10 @@ def _batch_worker(cfg: dict) -> None:
     target = cfg.get("target_account")
     fraud  = cfg["fraud_mode"]
 
-    log.info("Batch started | count=%d fraud=%s dry_run=%s", count, fraud, cfg["dry_run"])
-    msgs = [generate_transaction(target, fraud) for _ in range(count)]
+    dlq_rate = cfg["dlq_fail_rate"]
+    log.info("Batch started | count=%d fraud=%s dlq_fail_rate=%.0f%% dry_run=%s",
+             count, fraud, dlq_rate * 100, cfg["dry_run"])
+    msgs = [generate_transaction(target, fraud, dlq_rate) for _ in range(count)]
 
     for start in range(0, len(msgs), 10):
         if _stop_event.is_set():
@@ -204,6 +220,7 @@ def _inject_globals():
 
 
 @app.route("/")
+@auth.login_required
 def index():
     return render_template(
         "index.html",
@@ -215,6 +232,7 @@ def index():
 
 
 @app.route("/start", methods=["POST"])
+@auth.login_required
 def start():
     global _gen_thread, _stop_event
 
@@ -231,6 +249,7 @@ def start():
         "region":         (data.get("region")    or DEFAULT_REGION).strip(),
         "dry_run":        bool(data.get("dry_run",    False)),
         "fraud_mode":     bool(data.get("fraud_mode", False)),
+        "dlq_fail_rate":  min(1.0, max(0.0, float(data.get("dlq_fail_rate", 0)) / 100)),
         "target_account": target,
         "min_interval":   max(0.1, float(data.get("min_interval", MIN_INTERVAL))),
         "max_interval":   max(0.1, float(data.get("max_interval", MAX_INTERVAL))),
@@ -255,6 +274,7 @@ def start():
 
 
 @app.route("/stop", methods=["POST"])
+@auth.login_required
 def stop():
     if not _running():
         return jsonify({"ok": False, "error": "Generator is not running"}), 409
@@ -264,11 +284,13 @@ def stop():
 
 
 @app.route("/status")
+@auth.login_required
 def status():
     return jsonify(_get_stats())
 
 
 @app.route("/stream")
+@auth.login_required
 def stream():
     def generate():
         q: queue.Queue = queue.Queue(maxsize=300)

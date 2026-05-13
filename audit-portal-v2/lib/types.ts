@@ -46,6 +46,15 @@ export interface DashboardStats {
   today: string
 }
 
+export interface DlqMessage {
+  messageId: string
+  receiptHandle: string
+  sentAt: string
+  receiveCount: number
+  body: Partial<Transaction> | null
+  rawBody: string
+}
+
 export interface AccountSummary {
   accountId: string
   customerName?: string

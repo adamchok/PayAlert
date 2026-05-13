@@ -70,6 +70,20 @@
           </div>
         </div>
 
+        {# DLQ fail rate #}
+        <div class="mb-3">
+          <label class="form-label small fw-semibold text-uppercase text-muted d-flex justify-content-between" style="letter-spacing:.05em">
+            <span><i class="bi bi-archive-fill text-danger me-1"></i>DLQ Fail Rate</span>
+            <span id="dlq-rate-display" class="text-danger fw-bold">0%</span>
+          </label>
+          <input type="range" class="form-range" id="cfg-dlq-rate"
+                 min="0" max="100" step="5" value="0"
+                 oninput="document.getElementById('dlq-rate-display').textContent = this.value + '%'">
+          <div class="form-text">
+            <i class="bi bi-info-circle me-1"></i>% of transactions that will fail processing and route to the DLQ after 3 retries.
+          </div>
+        </div>
+
         {# Queue URL #}
         <div class="mb-3" id="queue-url-group">
           <label class="form-label small fw-semibold text-uppercase text-muted" style="letter-spacing:.05em" for="cfg-queue">Queue URL</label>
@@ -317,7 +331,7 @@ function setRunning(running, resetTimer) {
   document.querySelectorAll(
     '#cfg-account, #cfg-fraud, #cfg-dryrun, #cfg-queue, #cfg-region, ' +
     '#cfg-min-interval, #cfg-max-interval, #cfg-burst-min, #cfg-burst-max, ' +
-    '#cfg-count, #mode-stream, #mode-batch'
+    '#cfg-count, #cfg-dlq-rate, #mode-stream, #mode-batch'
   ).forEach(el => { el.disabled = running; });
 }
 
@@ -325,17 +339,18 @@ function setRunning(running, resetTimer) {
 function startGenerator() {
   const mode = document.querySelector('[name=mode]:checked').value;
   const payload = {
-    mode:         mode,
-    queue_url:    document.getElementById('cfg-queue').value,
-    region:       document.getElementById('cfg-region').value,
-    dry_run:      document.getElementById('cfg-dryrun').checked,
-    fraud_mode:   document.getElementById('cfg-fraud').checked,
-    account:      document.getElementById('cfg-account').value,
-    min_interval: parseFloat(document.getElementById('cfg-min-interval').value),
-    max_interval: parseFloat(document.getElementById('cfg-max-interval').value),
-    burst_min:    parseInt(document.getElementById('cfg-burst-min').value),
-    burst_max:    parseInt(document.getElementById('cfg-burst-max').value),
-    count:        parseInt(document.getElementById('cfg-count').value),
+    mode:           mode,
+    queue_url:      document.getElementById('cfg-queue').value,
+    region:         document.getElementById('cfg-region').value,
+    dry_run:        document.getElementById('cfg-dryrun').checked,
+    fraud_mode:     document.getElementById('cfg-fraud').checked,
+    dlq_fail_rate:  parseInt(document.getElementById('cfg-dlq-rate').value),
+    account:        document.getElementById('cfg-account').value,
+    min_interval:   parseFloat(document.getElementById('cfg-min-interval').value),
+    max_interval:   parseFloat(document.getElementById('cfg-max-interval').value),
+    burst_min:      parseInt(document.getElementById('cfg-burst-min').value),
+    burst_max:      parseInt(document.getElementById('cfg-burst-max').value),
+    count:          parseInt(document.getElementById('cfg-count').value),
   };
 
   fetch('/start', {

@@ -64,6 +64,9 @@ def process_transaction(table: Any, transaction: dict) -> None:
     if not transaction_id:
         raise ValueError("Missing required field: transactionId")
 
+    if transaction.get("_forceFail"):
+        raise ValueError("Forced failure for DLQ demo (transactionId=%s)" % transaction_id)
+
     now_utc = datetime.now(timezone.utc)
 
     # Synthetic fields added at processing time

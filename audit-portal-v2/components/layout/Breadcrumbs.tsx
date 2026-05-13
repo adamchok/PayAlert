@@ -9,6 +9,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   transactions: 'Transactions',
   account: 'Account',
   transaction: 'Transaction',
+  dlq: 'Dead Letter Queue',
   api: 'API',
 }
 
