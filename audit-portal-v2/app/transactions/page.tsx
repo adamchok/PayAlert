@@ -32,7 +32,7 @@ export default async function TransactionsPage({
             </p>
           </div>
           <div className="flex items-center gap-4">
-            <AutoRefresh intervalMs={30000} />
+            <AutoRefresh intervalMs={5000} />
             <ExportButton items={items} filename={`transactions-${date}.csv`} />
           </div>
         </div>

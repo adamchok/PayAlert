@@ -46,7 +46,7 @@ export default async function DashboardPage({
             </p>
           </div>
           <div className="flex items-center gap-4">
-            <AutoRefresh intervalMs={30000} />
+            <AutoRefresh intervalMs={5000} />
             <DateNavigator
               date={date}
               prevDate={prev}

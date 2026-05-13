@@ -8,7 +8,7 @@ interface AutoRefreshProps {
   intervalMs?: number
 }
 
-export function AutoRefresh({ intervalMs = 30000 }: AutoRefreshProps) {
+export function AutoRefresh({ intervalMs = 5000 }: AutoRefreshProps) {
   const router = useRouter()
   const [countdown, setCountdown] = useState(Math.floor(intervalMs / 1000))
   const [refreshing, setRefreshing] = useState(false)
