@@ -1,0 +1,6 @@
+FROM python:3.11-slim
+WORKDIR /app
+COPY transaction-processor/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+COPY transaction-processor/handler.py ./transaction-processor/handler.py
+COPY tests/worker.py ./tests/worker.py

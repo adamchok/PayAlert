@@ -1,0 +1,319 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Description: >
+  PayAlert — Real-time financial transaction processing pipeline.
+  SQS → Lambda → DynamoDB with SNS alerting for high-risk transactions.
+
+# ── Parameters ────────────────────────────────────────────────────────────────
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Deployment environment tag
+
+  AlertEmail:
+    Type: String
+    Description: >
+      Email address to receive HIGH/CRITICAL risk transaction alerts.
+      A subscription confirmation will be sent to this address after deploy.
+
+  AlertRiskThreshold:
+    Type: Number
+    Default: 50
+    MinValue: 0
+    MaxValue: 100
+    Description: >
+      Minimum riskScore (0–100) that triggers an SNS alert email.
+      Matches the generator's isFlagged threshold (riskScore >= 50).
+
+  TransactionTTLDays:
+    Type: Number
+    Default: 90
+    MinValue: 1
+    MaxValue: 3650
+    Description: Days before DynamoDB automatically expires stored transactions
+
+# ── Globals ───────────────────────────────────────────────────────────────────
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Architectures: [x86_64]
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+
+# ── Resources ─────────────────────────────────────────────────────────────────
+
+Resources:
+
+  # ── Dead-letter Queue ────────────────────────────────────────────────────────
+
+  TransactionDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub payalert-transactions-dlq-${Environment}
+      MessageRetentionPeriod: 1209600   # 14 days — maximum SQS retention
+      SqsManagedSseEnabled: true
+      Tags:
+        - Key: Project
+          Value: PayAlert
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ── Main Transaction Queue ───────────────────────────────────────────────────
+
+  TransactionQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub payalert-transactions-queue-${Environment}
+      # VisibilityTimeout must be >= 6 × Lambda timeout (6 × 30s = 180s)
+      VisibilityTimeout: 180
+      MessageRetentionPeriod: 86400     # 1 day
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt TransactionDLQ.Arn
+        maxReceiveCount: 3              # 3 delivery attempts before DLQ
+      Tags:
+        - Key: Project
+          Value: PayAlert
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ── DynamoDB Table ───────────────────────────────────────────────────────────
+
+  TransactionsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain              # Prevent accidental data loss on stack delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: payalert-transactions
+      BillingMode: PAY_PER_REQUEST      # Scales automatically; no capacity planning needed
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true                # AWS-owned KMS key encryption at rest
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      AttributeDefinitions:
+        - AttributeName: transactionId
+          AttributeType: S
+        - AttributeName: accountId
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+        - AttributeName: riskLevel
+          AttributeType: S
+        - AttributeName: datePartition
+          AttributeType: S
+      KeySchema:
+        - AttributeName: transactionId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        # Query: "all transactions for a given account, sorted by time"
+        - IndexName: AccountTransactionsIndex
+          KeySchema:
+            - AttributeName: accountId
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        # Query: "all HIGH or CRITICAL transactions today"
+        - IndexName: RiskLevelIndex
+          KeySchema:
+            - AttributeName: riskLevel
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        # Query: "all transactions on a given calendar day" (for the audit portal feed)
+        - IndexName: DatePartitionIndex
+          KeySchema:
+            - AttributeName: datePartition
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Project
+          Value: PayAlert
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ── SNS Alert Topic ──────────────────────────────────────────────────────────
+
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub payalert-alerts-${Environment}
+      Tags:
+        - Key: Project
+          Value: PayAlert
+        - Key: Environment
+          Value: !Ref Environment
+
+  AlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  # ── Lambda: Transaction Processor ───────────────────────────────────────────
+
+  TransactionProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub payalert-transaction-processor-${Environment}
+      CodeUri: transaction-processor/
+      Handler: handler.lambda_handler
+      Description: >
+        Reads transaction batches from SQS, writes to DynamoDB, and publishes
+        SNS alerts for transactions with riskScore >= AlertRiskThreshold.
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref TransactionsTable
+          ALERT_TOPIC_ARN: !Ref AlertTopic
+          ALERT_RISK_THRESHOLD: !Ref AlertRiskThreshold
+          TTL_DAYS: !Ref TransactionTTLDays
+      Policies:
+        - DynamoDBWritePolicy:
+            TableName: !Ref TransactionsTable
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt AlertTopic.TopicName
+        - SQSPollerPolicy:
+            QueueName: !GetAtt TransactionQueue.QueueName
+      Events:
+        SQSTrigger:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt TransactionQueue.Arn
+            BatchSize: 10
+            # Partial batch failure: only failed messages are retried,
+            # not the entire batch.
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
+            ScalingConfig:
+              MaximumConcurrency: 10
+      Tags:
+        Project: PayAlert
+        Environment: !Ref Environment
+
+  TransactionProcessorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/payalert-transaction-processor-${Environment}
+      RetentionInDays: 30
+
+  # ── CloudWatch Alarms ────────────────────────────────────────────────────────
+
+  DLQDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub payalert-dlq-depth-${Environment}
+      AlarmDescription: >
+        Messages visible in the DLQ indicate repeated processing failures.
+        Investigate Lambda errors immediately.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt TransactionDLQ.QueueName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref AlertTopic
+      TreatMissingData: notBreaching
+
+  ProcessorErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub payalert-processor-errors-${Environment}
+      AlarmDescription: Lambda errors in the transaction processor function
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref TransactionProcessorFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref AlertTopic
+      TreatMissingData: notBreaching
+
+  ProcessorThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub payalert-processor-throttles-${Environment}
+      AlarmDescription: Lambda throttles indicate concurrency limit has been reached
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref TransactionProcessorFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref AlertTopic
+      TreatMissingData: notBreaching
+
+# ── Outputs ───────────────────────────────────────────────────────────────────
+
+Outputs:
+
+  TransactionQueueUrl:
+    Description: >
+      SQS queue URL — set this as SQS_QUEUE_URL in the transaction generator.
+    Value: !Ref TransactionQueue
+    Export:
+      Name: !Sub payalert-queue-url-${Environment}
+
+  TransactionQueueArn:
+    Description: SQS queue ARN
+    Value: !GetAtt TransactionQueue.Arn
+
+  DeadLetterQueueUrl:
+    Description: DLQ URL for monitoring failed messages
+    Value: !Ref TransactionDLQ
+
+  TransactionsTableName:
+    Description: DynamoDB table name — used by the audit portal
+    Value: !Ref TransactionsTable
+    Export:
+      Name: !Sub payalert-table-name-${Environment}
+
+  TransactionsTableArn:
+    Description: DynamoDB table ARN
+    Value: !GetAtt TransactionsTable.Arn
+
+  AlertTopicArn:
+    Description: SNS alert topic ARN
+    Value: !Ref AlertTopic
+    Export:
+      Name: !Sub payalert-alert-topic-arn-${Environment}
+
+  TransactionProcessorFunctionArn:
+    Description: Lambda function ARN
+    Value: !GetAtt TransactionProcessorFunction.Arn
+
+  TransactionProcessorFunctionName:
+    Description: Lambda function name
+    Value: !Ref TransactionProcessorFunction

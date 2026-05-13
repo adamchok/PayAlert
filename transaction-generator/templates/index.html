@@ -1,0 +1,379 @@
+{% extends "base.html" %}
+{% block title %}Generator – PayAlert{% endblock %}
+{% block footer_version %}{{ version }}{% endblock %}
+
+{% block content %}
+
+{# ── Page header ── #}
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+  <h5 class="mb-0">
+    <i class="bi bi-broadcast me-1"></i>Transaction Generator
+    <small class="text-muted fw-normal fs-6 ms-1">v{{ version }}</small>
+  </h5>
+  <span id="status-badge" class="badge bg-secondary px-3 py-2" style="font-size:0.85rem">
+    <i class="bi bi-circle-fill me-1"></i>STOPPED
+  </span>
+</div>
+
+<div class="row g-3">
+
+  {# ── Left column: Configuration ── #}
+  <div class="col-xl-4 col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex align-items-center gap-2 fw-semibold">
+        <i class="bi bi-sliders"></i> Configuration
+      </div>
+      <div class="card-body">
+
+        {# Mode toggle #}
+        <div class="mb-3">
+          <label class="form-label small fw-semibold text-uppercase text-muted" style="letter-spacing:.05em">Mode</label>
+          <div class="btn-group w-100" role="group" id="mode-group">
+            <input type="radio" class="btn-check" name="mode" id="mode-stream" value="stream" checked>
+            <label class="btn btn-outline-primary btn-sm" for="mode-stream">
+              <i class="bi bi-infinity me-1"></i>Stream
+            </label>
+            <input type="radio" class="btn-check" name="mode" id="mode-batch" value="batch">
+            <label class="btn btn-outline-primary btn-sm" for="mode-batch">
+              <i class="bi bi-collection me-1"></i>Batch
+            </label>
+          </div>
+        </div>
+
+        {# Account filter #}
+        <div class="mb-3">
+          <label class="form-label small fw-semibold text-uppercase text-muted" style="letter-spacing:.05em" for="cfg-account">Account</label>
+          <select class="form-select form-select-sm" id="cfg-account">
+            <option value="">All accounts (random)</option>
+            {% for a in accounts %}
+            <option value="{{ a.accountId }}">
+              {{ a.customerName }} &middot; ••••{{ a.cardLast4 }}
+              <small>({{ a.customerTier }})</small>
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {# Toggles #}
+        <div class="mb-3 d-flex gap-4">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="cfg-fraud" role="switch">
+            <label class="form-check-label small" for="cfg-fraud">
+              <i class="bi bi-exclamation-triangle-fill text-warning me-1"></i>Fraud Mode
+            </label>
+          </div>
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="cfg-dryrun" role="switch">
+            <label class="form-check-label small" for="cfg-dryrun">
+              <i class="bi bi-eye-fill text-info me-1"></i>Dry Run
+            </label>
+          </div>
+        </div>
+
+        {# Queue URL #}
+        <div class="mb-3" id="queue-url-group">
+          <label class="form-label small fw-semibold text-uppercase text-muted" style="letter-spacing:.05em" for="cfg-queue">Queue URL</label>
+          <input type="text" class="form-control form-control-sm font-monospace"
+                 id="cfg-queue" placeholder="https://sqs.*.amazonaws.com/…"
+                 value="{{ default_queue }}">
+          <div class="form-text" id="dryrun-note" style="display:none">
+            <i class="bi bi-info-circle me-1"></i>Not required in dry-run mode.
+          </div>
+        </div>
+
+        {# Region #}
+        <div class="mb-3">
+          <label class="form-label small fw-semibold text-uppercase text-muted" style="letter-spacing:.05em" for="cfg-region">AWS Region</label>
+          <input type="text" class="form-control form-control-sm"
+                 id="cfg-region" value="{{ default_region }}">
+        </div>
+
+        <hr class="my-3">
+
+        {# Stream options #}
+        <div id="stream-options">
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <label class="form-label small fw-semibold text-uppercase text-muted" style="letter-spacing:.05em" for="cfg-min-interval">Min interval (s)</label>
+              <input type="number" class="form-control form-control-sm" id="cfg-min-interval"
+                     value="0.1" min="0.1" max="60" step="0.1">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-semibold text-uppercase text-muted" style="letter-spacing:.05em" for="cfg-max-interval">Max interval (s)</label>
+              <input type="number" class="form-control form-control-sm" id="cfg-max-interval"
+                     value="2.0" min="0.1" max="60" step="0.1">
+            </div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label small fw-semibold text-uppercase text-muted" style="letter-spacing:.05em" for="cfg-burst-min">Burst min</label>
+              <input type="number" class="form-control form-control-sm" id="cfg-burst-min"
+                     value="1" min="1" max="10">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-semibold text-uppercase text-muted" style="letter-spacing:.05em" for="cfg-burst-max">Burst max</label>
+              <input type="number" class="form-control form-control-sm" id="cfg-burst-max"
+                     value="5" min="1" max="10">
+            </div>
+          </div>
+        </div>
+
+        {# Batch options #}
+        <div id="batch-options" style="display:none">
+          <div class="mb-3">
+            <label class="form-label small fw-semibold text-uppercase text-muted" style="letter-spacing:.05em" for="cfg-count">Transaction count</label>
+            <input type="number" class="form-control form-control-sm" id="cfg-count"
+                   value="20" min="1" max="10000">
+          </div>
+        </div>
+
+        {# Action buttons #}
+        <div class="d-grid gap-2">
+          <button id="btn-start" class="btn btn-success"
+                  onclick="startGenerator()">
+            <i class="bi bi-play-circle-fill me-1"></i>Start Generator
+          </button>
+          <button id="btn-stop" class="btn btn-outline-danger" disabled
+                  onclick="stopGenerator()">
+            <i class="bi bi-stop-circle-fill me-1"></i>Stop Generator
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  {# ── Right column: Stats + Log ── #}
+  <div class="col-xl-8 col-lg-7 d-flex flex-column gap-3">
+
+    {# Stats cards #}
+    <div class="row g-2">
+      <div class="col-6 col-sm-3">
+        <div class="card card-stat card-total shadow-sm h-100">
+          <div class="card-body py-2 px-3">
+            <div class="text-muted small">Generated</div>
+            <div class="fs-2 fw-bold text-primary lh-1 mt-1" id="stat-generated">0</div>
+            <div class="text-muted" style="font-size:0.7rem">transactions</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-sm-3">
+        <div class="card card-stat card-flagged shadow-sm h-100">
+          <div class="card-body py-2 px-3">
+            <div class="text-muted small">Sent to SQS</div>
+            <div class="fs-2 fw-bold text-success lh-1 mt-1" id="stat-sent">0</div>
+            <div class="text-muted" style="font-size:0.7rem">messages</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-sm-3">
+        <div class="card card-stat card-critical shadow-sm h-100">
+          <div class="card-body py-2 px-3">
+            <div class="text-muted small">Failed</div>
+            <div class="fs-2 fw-bold lh-1 mt-1" style="color:#842029" id="stat-failed">0</div>
+            <div class="text-muted" style="font-size:0.7rem">errors</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-sm-3">
+        <div class="card card-stat card-high shadow-sm h-100">
+          <div class="card-body py-2 px-3">
+            <div class="text-muted small">Elapsed</div>
+            <div class="fs-2 fw-bold lh-1 mt-1" style="color:#fd7e14" id="stat-elapsed">0s</div>
+            <div class="text-muted" style="font-size:0.7rem">runtime</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# Live log #}
+    <div class="card shadow-sm flex-grow-1">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>
+          <i class="bi bi-terminal me-1"></i>Live Log
+          <span class="badge bg-secondary ms-1 small" id="log-count">0 lines</span>
+        </span>
+        <div class="d-flex align-items-center gap-2">
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" id="autoscroll-toggle" checked>
+            <label class="form-check-label small text-muted" for="autoscroll-toggle">Auto-scroll</label>
+          </div>
+          <button class="btn btn-sm btn-outline-secondary" onclick="clearLog()">
+            <i class="bi bi-trash3 me-1"></i>Clear
+          </button>
+        </div>
+      </div>
+      <div id="log-feed">
+        <div class="log-muted">Waiting for generator to start…</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let isRunning   = false;
+let runStart    = null;   // Date.now() when started (client-side)
+let logLineCount = 0;
+let evtSource   = null;
+
+// ── Elapsed timer (client-side, updates every second) ─────────────────────
+setInterval(() => {
+  if (isRunning && runStart !== null) {
+    const s = Math.floor((Date.now() - runStart) / 1000);
+    document.getElementById('stat-elapsed').textContent = formatElapsed(s);
+  }
+}, 1000);
+
+function formatElapsed(s) {
+  if (s < 60) return s + 's';
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return m + 'm ' + r + 's';
+}
+
+// ── SSE connection ─────────────────────────────────────────────────────────
+function connectSSE() {
+  evtSource = new EventSource('/stream');
+  evtSource.onmessage = (e) => handleMessage(JSON.parse(e.data));
+  evtSource.onerror   = () => appendLog('ERROR', 'SSE connection lost — page refresh may be needed.');
+}
+
+function handleMessage(msg) {
+  switch (msg.type) {
+    case 'ping':   return;
+    case 'log':    appendLog(msg.level, `[${msg.ts}]  ${msg.msg}`); break;
+    case 'stats':  updateStats(msg); break;
+    case 'status': updateStats(msg); setRunning(msg.running, false); break;
+    case 'started':
+      setRunning(true, true);
+      appendLog('INFO', '▶  Generator started.');
+      break;
+    case 'stopped':
+      setRunning(false, false);
+      if (msg.generated !== undefined) updateStats(msg);
+      appendLog('INFO', '■  Generator stopped.');
+      break;
+  }
+}
+
+// ── Log feed ───────────────────────────────────────────────────────────────
+function appendLog(level, text) {
+  const feed = document.getElementById('log-feed');
+  const line = document.createElement('div');
+  line.className = 'log-' + level;
+  line.textContent = text;
+  feed.appendChild(line);
+  logLineCount++;
+  document.getElementById('log-count').textContent = logLineCount + ' lines';
+  if (document.getElementById('autoscroll-toggle').checked) {
+    feed.scrollTop = feed.scrollHeight;
+  }
+}
+
+function clearLog() {
+  document.getElementById('log-feed').innerHTML = '';
+  logLineCount = 0;
+  document.getElementById('log-count').textContent = '0 lines';
+}
+
+// ── Stats ──────────────────────────────────────────────────────────────────
+function updateStats(msg) {
+  if (msg.generated !== undefined)
+    document.getElementById('stat-generated').textContent = msg.generated;
+  if (msg.sent !== undefined)
+    document.getElementById('stat-sent').textContent = msg.sent;
+  if (msg.failed !== undefined)
+    document.getElementById('stat-failed').textContent = msg.failed;
+  if (msg.elapsed !== undefined && !isRunning)
+    document.getElementById('stat-elapsed').textContent = formatElapsed(msg.elapsed);
+}
+
+// ── Status badge + form lock ───────────────────────────────────────────────
+function setRunning(running, resetTimer) {
+  isRunning = running;
+  if (running && resetTimer) {
+    runStart = Date.now();
+  } else if (!running) {
+    runStart = null;
+  }
+
+  const badge = document.getElementById('status-badge');
+  if (running) {
+    badge.className = 'badge bg-success px-3 py-2';
+    badge.style.fontSize = '0.85rem';
+    badge.innerHTML = '<i class="bi bi-circle-fill me-1 pulse"></i>RUNNING';
+  } else {
+    badge.className = 'badge bg-secondary px-3 py-2';
+    badge.style.fontSize = '0.85rem';
+    badge.innerHTML = '<i class="bi bi-circle-fill me-1"></i>STOPPED';
+  }
+
+  document.getElementById('btn-start').disabled = running;
+  document.getElementById('btn-stop').disabled  = !running;
+
+  // Lock/unlock all config controls
+  document.querySelectorAll(
+    '#cfg-account, #cfg-fraud, #cfg-dryrun, #cfg-queue, #cfg-region, ' +
+    '#cfg-min-interval, #cfg-max-interval, #cfg-burst-min, #cfg-burst-max, ' +
+    '#cfg-count, #mode-stream, #mode-batch'
+  ).forEach(el => { el.disabled = running; });
+}
+
+// ── Start / Stop ───────────────────────────────────────────────────────────
+function startGenerator() {
+  const mode = document.querySelector('[name=mode]:checked').value;
+  const payload = {
+    mode:         mode,
+    queue_url:    document.getElementById('cfg-queue').value,
+    region:       document.getElementById('cfg-region').value,
+    dry_run:      document.getElementById('cfg-dryrun').checked,
+    fraud_mode:   document.getElementById('cfg-fraud').checked,
+    account:      document.getElementById('cfg-account').value,
+    min_interval: parseFloat(document.getElementById('cfg-min-interval').value),
+    max_interval: parseFloat(document.getElementById('cfg-max-interval').value),
+    burst_min:    parseInt(document.getElementById('cfg-burst-min').value),
+    burst_max:    parseInt(document.getElementById('cfg-burst-max').value),
+    count:        parseInt(document.getElementById('cfg-count').value),
+  };
+
+  fetch('/start', {
+    method:  'POST',
+    headers: {'Content-Type': 'application/json'},
+    body:    JSON.stringify(payload),
+  })
+  .then(r => r.json())
+  .then(r => { if (!r.ok) appendLog('ERROR', 'Start failed: ' + r.error); })
+  .catch(err => appendLog('ERROR', 'Network error: ' + err));
+}
+
+function stopGenerator() {
+  fetch('/stop', { method: 'POST' })
+  .then(r => r.json())
+  .then(r => { if (!r.ok) appendLog('ERROR', 'Stop failed: ' + r.error); })
+  .catch(err => appendLog('ERROR', 'Network error: ' + err));
+}
+
+// ── Mode switching ─────────────────────────────────────────────────────────
+document.querySelectorAll('[name=mode]').forEach(radio => {
+  radio.addEventListener('change', function () {
+    const stream = this.value === 'stream';
+    document.getElementById('stream-options').style.display = stream ? '' : 'none';
+    document.getElementById('batch-options').style.display  = stream ? 'none' : '';
+  });
+});
+
+// ── Dry-run toggle ─────────────────────────────────────────────────────────
+document.getElementById('cfg-dryrun').addEventListener('change', function () {
+  const grp  = document.getElementById('queue-url-group');
+  const note = document.getElementById('dryrun-note');
+  grp.style.opacity   = this.checked ? '0.45' : '1';
+  note.style.display  = this.checked ? '' : 'none';
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────
+connectSSE();
+</script>
+
+{% endblock %}

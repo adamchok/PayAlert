@@ -1,0 +1,25 @@
+# SAM build output
+.aws-sam/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Build artifacts
+*.zip
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/

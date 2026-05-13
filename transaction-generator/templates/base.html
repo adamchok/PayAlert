@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}PayAlert Generator{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    body { background-color: #f4f6f9; }
+
+    /* Stat cards — coloured left border (matches audit-portal) */
+    .card-stat  { border-left: 4px solid; }
+    .card-total    { border-color: #0d6efd; }
+    .card-flagged  { border-color: #198754; }
+    .card-critical { border-color: #842029; }
+    .card-high     { border-color: #fd7e14; }
+
+    /* Running pulse animation */
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.25; }
+    }
+    .pulse { animation: pulse 1.2s ease-in-out infinite; }
+
+    /* Terminal log feed */
+    #log-feed {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      font-family: 'Cascadia Code', 'Courier New', monospace;
+      font-size: 0.80rem;
+      line-height: 1.5;
+      height: 420px;
+      overflow-y: auto;
+      padding: 0.75rem 1rem;
+      border-radius: 0 0 0.375rem 0.375rem;
+    }
+    .log-INFO    { color: #d4d4d4; }
+    .log-WARNING { color: #cca700; }
+    .log-ERROR   { color: #f48771; }
+    .log-DEBUG   { color: #6a9955; }
+    .log-muted   { color: #555; font-style: italic; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-bold" href="/">
+      <i class="bi bi-shield-exclamation-fill text-warning me-1"></i>PayAlert
+      <span class="badge bg-secondary ms-1" style="font-size:0.6rem;vertical-align:middle">{{ environment }}</span>
+    </a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMain">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navMain">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        <li class="nav-item">
+          <a class="nav-link active" href="/">
+            <i class="bi bi-broadcast me-1"></i>Generator
+          </a>
+        </li>
+      </ul>
+      <span class="navbar-text small text-secondary">
+        <i class="bi bi-cpu me-1"></i>Transaction Generator
+      </span>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid py-4 px-4">
+  {% block content %}{% endblock %}
+</div>
+
+<footer class="text-center text-muted py-3 border-top small">
+  PayAlert Transaction Generator &mdash; v{% block footer_version %}{% endblock %}
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
