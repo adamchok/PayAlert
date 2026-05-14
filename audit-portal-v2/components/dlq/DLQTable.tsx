@@ -113,7 +113,7 @@ export function DLQTable() {
         <CardTitle className="text-base font-semibold">
           Failed Messages
           {messages.length > 0 && (
-            <Badge variant="destructive" className="ml-2 text-xs">
+            <Badge variant="critical" className="ml-2 text-xs">
               {messages.length} loaded
             </Badge>
           )}
