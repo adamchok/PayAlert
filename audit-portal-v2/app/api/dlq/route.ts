@@ -94,10 +94,19 @@ export async function POST(request: Request) {
       if (!MAIN_QUEUE_URL) {
         return Response.json({ error: 'MAIN_QUEUE_URL is not configured' }, { status: 500 })
       }
+      let messageBody = rawBody ?? ''
+      try {
+        const parsed = JSON.parse(messageBody)
+        if (parsed._forceFail) {
+          delete parsed._forceFail
+          messageBody = JSON.stringify(parsed)
+        }
+      } catch { /* send as-is if body isn't valid JSON */ }
+
       await sqsClient.send(
         new SendMessageCommand({
           QueueUrl: MAIN_QUEUE_URL,
-          MessageBody: rawBody ?? '',
+          MessageBody: messageBody,
         })
       )
     }
