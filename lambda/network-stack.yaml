@@ -1,0 +1,494 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  PayAlert — Network infrastructure: VPC, subnets, gateways, route tables,
+  security groups, EC2 instances, ALB, and target groups.
+
+# ── Parameters ────────────────────────────────────────────────────────────────
+
+Parameters:
+
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Deployment environment tag
+
+  WorkstationCidr:
+    Type: String
+    Description: >
+      Your workstation's public IP in CIDR notation (e.g. 203.0.113.5/32).
+      Used to restrict port 5001 on the ALB to your machine only.
+    AllowedPattern: '^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$'
+    ConstraintDescription: Must be a valid CIDR block (e.g. 203.0.113.5/32)
+
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: payalert-key
+    Description: >
+      EC2 key pair name. Required by the Launch Template — not needed for
+      SSM Session Manager access.
+
+  UbuntuAmiId:
+    Type: AWS::EC2::Image::Id
+    Description: >
+      AMI ID for Ubuntu Server 26.04 LTS (64-bit x86) in us-east-1.
+      Find it in EC2 Console → AMIs → Public images → search "ubuntu-26.04".
+
+  InstanceProfileName:
+    Type: String
+    Default: LabInstanceProfile
+    Description: >
+      Name of the IAM instance profile to attach to EC2 instances.
+      In AWS Academy Learner Labs this is typically 'LabInstanceProfile'.
+
+# ── Resources ─────────────────────────────────────────────────────────────────
+
+Resources:
+
+  # ── VPC ──────────────────────────────────────────────────────────────────────
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: payalert-vpc
+        - Key: Project
+          Value: PayAlert
+        - Key: Group
+          Value: payalert-group-4
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ── Subnets ───────────────────────────────────────────────────────────────────
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: payalert-public-1
+        - Key: Project
+          Value: PayAlert
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: payalert-public-2
+        - Key: Project
+          Value: PayAlert
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: payalert-private-1
+        - Key: Project
+          Value: PayAlert
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.4.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: payalert-private-2
+        - Key: Project
+          Value: PayAlert
+
+  # ── Internet Gateway ──────────────────────────────────────────────────────────
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: payalert-igw
+        - Key: Project
+          Value: PayAlert
+
+  IGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # ── NAT Gateway ───────────────────────────────────────────────────────────────
+
+  ElasticIP:
+    Type: AWS::EC2::EIP
+    DependsOn: IGWAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: payalert-eip
+        - Key: Project
+          Value: PayAlert
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt ElasticIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: payalert-nat-gw
+        - Key: Project
+          Value: PayAlert
+
+  # ── Route Tables ──────────────────────────────────────────────────────────────
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: payalert-public-rt
+        - Key: Project
+          Value: PayAlert
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: IGWAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1Association:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2Association:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: payalert-private-rt
+        - Key: Project
+          Value: PayAlert
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  PrivateSubnet1Association:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnet2Association:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  # ── Security Groups ───────────────────────────────────────────────────────────
+
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: PayAlertALBSG
+      GroupDescription: ALB — port 80 public, port 5001 workstation only
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: Public access to audit portal
+        - IpProtocol: tcp
+          FromPort: 5001
+          ToPort: 5001
+          CidrIp: !Ref WorkstationCidr
+          Description: Generator UI — workstation only
+      Tags:
+        - Key: Name
+          Value: PayAlertALBSG
+        - Key: Project
+          Value: PayAlert
+
+  EICESecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: PayAlertEICESG
+      GroupDescription: EIC Endpoint — outbound SSH into VPC only
+      VpcId: !Ref VPC
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 10.0.0.0/16
+          Description: SSH from endpoint into VPC
+      Tags:
+        - Key: Name
+          Value: PayAlertEICESG
+        - Key: Project
+          Value: PayAlert
+
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: PayAlertEC2SG
+      GroupDescription: EC2 instances — SSH via EICE, app ports via ALB only
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          SourceSecurityGroupId: !Ref EICESecurityGroup
+          Description: SSH via EIC Endpoint only
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+          Description: Audit portal — ALB only
+        - IpProtocol: tcp
+          FromPort: 5001
+          ToPort: 5001
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+          Description: Generator UI — ALB only
+      Tags:
+        - Key: Name
+          Value: PayAlertEC2SG
+        - Key: Project
+          Value: PayAlert
+
+  # ── EIC Endpoint ──────────────────────────────────────────────────────────────
+  # Commented out: Learner Lab IAM role lacks ec2-instance-connect:OpenTunnel.
+  # Use SSM Session Manager instead (Step 4.3 in DEPLOYMENT.md).
+  #
+  # EICEndpoint:
+  #   Type: AWS::EC2::InstanceConnectEndpoint
+  #   Properties:
+  #     SubnetId: !Ref PrivateSubnet1
+  #     SecurityGroupIds:
+  #       - !Ref EICESecurityGroup
+  #     Tags:
+  #       - Key: Name
+  #         Value: payalert-eice
+
+  # ── EC2: Transaction Generator + Web UI ───────────────────────────────────────
+
+  GeneratorInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref UbuntuAmiId
+      InstanceType: t3.micro
+      KeyName: !Ref KeyPairName
+      SubnetId: !Ref PrivateSubnet1
+      SecurityGroupIds:
+        - !Ref EC2SecurityGroup
+      IamInstanceProfile: !Ref InstanceProfileName
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          set -e
+          apt-get update -y
+          apt-get upgrade -y
+          apt-get install -y python3 python3-pip python3-venv git
+          mkdir -p /opt/payalert /opt/payalert-repo
+      Tags:
+        - Key: Name
+          Value: payalert-ec2
+        - Key: Project
+          Value: PayAlert
+        - Key: Group
+          Value: payalert-group-4
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ── EC2: Audit Portal ─────────────────────────────────────────────────────────
+
+  AuditInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref UbuntuAmiId
+      InstanceType: t3.large
+      KeyName: !Ref KeyPairName
+      SubnetId: !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref EC2SecurityGroup
+      IamInstanceProfile: !Ref InstanceProfileName
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          set -e
+          apt-get update -y
+          apt-get upgrade -y
+          apt-get install -y git curl
+          curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+          apt-get install -y nodejs
+          mkdir -p /opt/payalert /opt/payalert-repo
+      Tags:
+        - Key: Name
+          Value: payalert-audit-ec2
+        - Key: Project
+          Value: PayAlert
+        - Key: Group
+          Value: payalert-group-4
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ── Application Load Balancer ─────────────────────────────────────────────────
+
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: payalert-alb
+      Scheme: internet-facing
+      Type: application
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      Tags:
+        - Key: Project
+          Value: PayAlert
+        - Key: Group
+          Value: payalert-group-4
+        - Key: Environment
+          Value: !Ref Environment
+
+  AuditTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: payalert-audit-tg
+      Protocol: HTTP
+      Port: 3000
+      VpcId: !Ref VPC
+      TargetType: instance
+      Targets:
+        - Id: !Ref AuditInstance
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: /
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      HealthCheckIntervalSeconds: 30
+      Tags:
+        - Key: Project
+          Value: PayAlert
+
+  GeneratorTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: payalert-generator-tg
+      Protocol: HTTP
+      Port: 5001
+      VpcId: !Ref VPC
+      TargetType: instance
+      Targets:
+        - Id: !Ref GeneratorInstance
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: /
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      HealthCheckIntervalSeconds: 30
+      Tags:
+        - Key: Project
+          Value: PayAlert
+
+  AuditListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ALB
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref AuditTargetGroup
+
+  GeneratorListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ALB
+      Protocol: HTTP
+      Port: 5001
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref GeneratorTargetGroup
+
+# ── Outputs ───────────────────────────────────────────────────────────────────
+
+Outputs:
+
+  VpcId:
+    Description: VPC ID
+    Value: !Ref VPC
+    Export:
+      Name: !Sub payalert-vpc-id-${Environment}
+
+  PrivateSubnet1Id:
+    Description: Private subnet 1 (us-east-1a) — generator EC2
+    Value: !Ref PrivateSubnet1
+    Export:
+      Name: !Sub payalert-private-subnet-1-${Environment}
+
+  PrivateSubnet2Id:
+    Description: Private subnet 2 (us-east-1b) — audit portal EC2 + ASG
+    Value: !Ref PrivateSubnet2
+    Export:
+      Name: !Sub payalert-private-subnet-2-${Environment}
+
+  EC2SecurityGroupId:
+    Description: EC2 security group ID — used by the ASG launch template
+    Value: !Ref EC2SecurityGroup
+    Export:
+      Name: !Sub payalert-ec2-sg-id-${Environment}
+
+  AuditTargetGroupArn:
+    Description: Audit portal target group ARN — used by the ASG
+    Value: !Ref AuditTargetGroup
+    Export:
+      Name: !Sub payalert-audit-tg-arn-${Environment}
+
+  GeneratorInstanceId:
+    Description: Instance ID for payalert-ec2 — use with SSM Session Manager
+    Value: !Ref GeneratorInstance
+
+  AuditInstanceId:
+    Description: Instance ID for payalert-audit-ec2 — use with SSM Session Manager
+    Value: !Ref AuditInstance
+
+  AlbDnsName:
+    Description: ALB DNS name — base URL for both applications
+    Value: !GetAtt ALB.DNSName
+    Export:
+      Name: !Sub payalert-alb-dns-${Environment}

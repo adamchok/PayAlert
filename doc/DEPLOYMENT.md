@@ -20,12 +20,12 @@ Step-by-step instructions for deploying and running the full PayAlert architectu
                     │           │            └────────────────┬──────────────┘ │
   Developer         │           │                             │                │
      │              │  Private Subnets — 10.0.3.0/24 · 10.0.4.0/24             │
-     └─► EIC ───────┼─────────────────────────────────────────│                │
-       (SSH tunnel) │  ┌──────────────────────┐  ┌────────────┴─────────────┐  │
-                    │  │  EC2 — payalert-ec2  │  │  ASG — Audit Portal      │  │
-                    │  │  Generator + Web UI  │  │  (port 3000)             │  │
-                    │  │  (port 5001)         │  │  Next.js 16              │  │
-                    │  └──────────────────────┘  └──────────────────────────┘  │
+     └─► SSM ───────┼─────────────────────────────────────────│                │
+       (HTTPS)      │  ┌──────────────────────┐  ┌────────────┴──────────────┐ │
+                    │  │  EC2 — payalert-ec2  │  │  EC2 — payalert-audit-ec2 │ │
+                    │  │  Generator + Web UI  │  │  Audit portal (Next.js)   │ │
+                    │  │  private-1 · :5001   │  │  private-2 · :3000 → ASG  │ │
+                    │  └──────────────────────┘  └───────────────────────────┘ │
                     └──────────────────────────────────────────────────────────┘
                                         │ outbound via NAT Gateway
                                         ▼
@@ -34,7 +34,7 @@ Step-by-step instructions for deploying and running the full PayAlert architectu
                               DynamoDB   SNS (email)
 ```
 
-**EIC** = EC2 Instance Connect Endpoint. Provides SSH access to private instances with no public IP and no bastion host required.
+**SSM** = AWS Systems Manager Session Manager. Provides browser and CLI shell access to private EC2 instances over HTTPS — no SSH port, no bastion, no EIC Endpoint required.
 
 **Components deployed:**
 
@@ -43,10 +43,9 @@ Step-by-step instructions for deploying and running the full PayAlert architectu
 | Lambda + SQS + DynamoDB + SNS | AWS (via CloudFormation Console)    | Processes and stores transactions, sends fraud alerts |
 | Custom VPC                    | AWS                                 | Isolates all EC2 resources from the default VPC       |
 | NAT Gateway                   | Public Subnet (payalert-public-1)   | Outbound internet access for private subnet instances |
-| EIC Endpoint                  | Private Subnet (payalert-private-1) | SSH tunnel to private EC2 — no public IP, no bastion |
 | Transaction Generator         | EC2 (Private Subnet)                | Streams synthetic transactions to SQS                 |
 | Generator Web UI              | EC2 (Private Subnet, via ALB :5001) | Browser control panel — protected by login            |
-| Audit Portal                  | ASG behind ALB (port 80)            | Live fraud dashboard reading DynamoDB                 |
+| Audit Portal                  | EC2 `payalert-audit-ec2` + ASG behind ALB (port 80) | Live fraud dashboard reading DynamoDB (golden image from dedicated instance) |
 
 ---
 
@@ -57,8 +56,8 @@ Step-by-step instructions for deploying and running the full PayAlert architectu
 | Requirement      | Notes                                                                                              |
 | ---------------- | -------------------------------------------------------------------------------------------------- |
 | Web browser      | For the AWS Management Console                                                                     |
-| AWS CLI v2       | Required for SSH tunnelling via EIC Endpoint. [Install guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) |
-| SSH client       | Built into macOS and Linux terminals; Git Bash or WSL2 on Windows                                  |
+| AWS CLI v2       | Required for SSM Session Manager CLI access. [Install guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) |
+| Session Manager plugin | Required for `aws ssm start-session` CLI access. [Install guide](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) |
 | Python 3.11+     | For packaging the Lambda function (only needed on your workstation for Step 1)                     |
 
 **AWS CLI credentials for Learner Labs:** In the Academy portal, click **AWS Details** → **Show** next to AWS CLI → copy the block and paste it into `~/.aws/credentials` (create the file if it doesn't exist). Repeat whenever the session restarts.
@@ -68,6 +67,39 @@ Step-by-step instructions for deploying and running the full PayAlert architectu
 ### AWS account
 
 You need an AWS account with permissions to create CloudFormation stacks, Lambda functions, SQS queues, DynamoDB tables, SNS topics, S3 buckets, VPCs, load balancers, and VPC endpoints.
+
+---
+
+## CloudFormation stacks overview
+
+The infrastructure is split across three CloudFormation templates in `lambda/`:
+
+| Template | Stack name | Deploys | When |
+|---|---|---|---|
+| `template.yaml` | `payalert-stack` | Lambda, SQS, DynamoDB, SNS, CloudWatch alarms | Step 1 |
+| `network-stack.yaml` | `payalert-network-stack` | VPC, subnets, NAT, security groups, EC2 instances, ALB, target groups | Step 3 |
+| `asg-stack.yaml` | `payalert-asg-stack` | Launch Template, ASG, scaling policy | Step 9 (after AMI is built) |
+
+**Parameters required for `network-stack.yaml`:**
+
+| Parameter | Value |
+|---|---|
+| `Environment` | `dev` |
+| `WorkstationCidr` | Your public IP + `/32` — find it at [whatismyip.com](https://www.whatismyip.com) |
+| `KeyPairName` | `payalert-key` (create in Step 4.1 first) |
+| `UbuntuAmiId` | Ubuntu Server 26.04 LTS AMI ID for us-east-1 — find in EC2 → AMIs → Public images |
+| `InstanceProfileName` | `LabInstanceProfile` (Learner Labs default) |
+
+**Parameters required for `asg-stack.yaml`:**
+
+| Parameter | Value |
+|---|---|
+| `Environment` | `dev` |
+| `AmiId` | AMI ID of `payalert-portal-ami` — built in Step 9.1 |
+| `KeyPairName` | `payalert-key` |
+| `InstanceProfileName` | `LabInstanceProfile` |
+
+> The network stack exports VPC, subnet, security group, and target group values that the ASG stack imports automatically — no manual copy-paste between stacks.
 
 ---
 
@@ -170,9 +202,9 @@ AWS sends a confirmation email to `AlertEmail` immediately after deployment. Ope
 
 ## Step 2 — Create the EC2 IAM role
 
-> **AWS Academy Learner Labs:** You cannot create IAM roles. Skip this step and use the existing `LabRole` — attach it as the instance profile in Step 4.
+> **AWS Academy Learner Labs:** You cannot create IAM roles. Skip this step — the network stack's `InstanceProfileName` parameter defaults to `LabInstanceProfile`, which attaches `LabRole` automatically to all EC2 instances (Step 3).
 
-The EC2 instance needs permission to write to SQS (generator) and read from DynamoDB (audit portal). One role covers both.
+The EC2 instances need permission to write to SQS (generator) and read from DynamoDB (audit portal). One role covers both.
 
 ### 2.1 Create the IAM policy
 
@@ -223,164 +255,58 @@ The EC2 instance needs permission to write to SQS (generator) and read from Dyna
 
 ---
 
-## Step 3 — Create the Custom VPC
+## Step 3 — Deploy the network stack
 
-All resources must reside in a custom VPC. This step builds the full network: subnets, internet gateway, NAT gateway, route tables, EC2 Instance Connect Endpoint, and security groups.
+> **Before you begin:** The network stack requires a key pair named `payalert-key`. Complete **Step 4.1** to create it before deploying this stack.
 
-### 3.1 Create the VPC
+All network infrastructure — VPC, subnets, NAT gateway, route tables, security groups, both EC2 instances, ALB, target groups, and listeners — is provisioned by `lambda/network-stack.yaml` in a single CloudFormation deployment.
 
-1. **[VPC Console](https://us-east-1.console.aws.amazon.com/vpc/home?region=us-east-1#vpcs:)** → **Create VPC**.
-2. Configure:
+### 3.1 Find the Ubuntu AMI ID
 
-| Setting                 | Value          |
-| ----------------------- | -------------- |
-| **Resources to create** | VPC only       |
-| **Name tag**            | `payalert-vpc` |
-| **IPv4 CIDR block**     | `10.0.0.0/16`  |
+1. **[EC2 Console](https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#AMICatalog:)** → **AMIs** → **Public images**.
+2. Search for `ubuntu/images/hvm-ssd` and filter by **Ubuntu Server 26.04 LTS**, **64-bit (x86)**.
+3. Copy the **AMI ID** (format: `ami-xxxxxxxxxxxxxxxxx`).
 
-3. **Create VPC**.
+### 3.2 Find your workstation public IP
 
-### 3.2 Create subnets
+Port 5001 (generator UI) on the ALB is restricted to your IP only.
 
-Create four subnets. The **public** subnets hold the ALB and NAT Gateway. The **private** subnets hold all EC2 compute — no direct internet access.
+1. Open [whatismyip.com](https://www.whatismyip.com) and copy your IPv4 address.
+2. Append `/32` — e.g. `203.0.113.5/32`.
 
-**[VPC Console](https://us-east-1.console.aws.amazon.com/vpc/home?region=us-east-1#subnets:)** → **Create subnet** → select `payalert-vpc`, then add all four:
+### 3.3 Deploy the network stack
 
-| Subnet name          | Availability Zone | IPv4 CIDR     | Purpose                    |
-| -------------------- | ----------------- | ------------- | -------------------------- |
-| `payalert-public-1`  | `us-east-1a`      | `10.0.1.0/24` | ALB + NAT Gateway          |
-| `payalert-public-2`  | `us-east-1b`      | `10.0.2.0/24` | ALB (second AZ)            |
-| `payalert-private-1` | `us-east-1a`      | `10.0.3.0/24` | EC2 generator + EIC endpoint |
-| `payalert-private-2` | `us-east-1b`      | `10.0.4.0/24` | ASG instances (second AZ)  |
+1. Open the **[CloudFormation Console](https://us-east-1.console.aws.amazon.com/cloudformation/home?region=us-east-1)** → **Create stack** → **With new resources (standard)**.
+2. **Template source:** Upload a template file → **Choose file** → select `lambda/network-stack.yaml` → **Next**.
+3. **Stack name:** `payalert-network-stack`
+4. Fill in the parameters:
 
-After creating, enable **auto-assign public IPv4** on both **public** subnets only:
-- Select `payalert-public-1` → **Actions** → **Edit subnet settings** → ☑ **Enable auto-assign public IPv4 address** → **Save**.
-- Repeat for `payalert-public-2`.
+| Parameter | Value |
+|---|---|
+| `Environment` | `dev` |
+| `WorkstationCidr` | Your IP + `/32` from step 3.2, e.g. `203.0.113.5/32` |
+| `KeyPairName` | `payalert-key` (created in Step 4.1) |
+| `UbuntuAmiId` | AMI ID from step 3.1 |
+| `InstanceProfileName` | `LabInstanceProfile` |
 
-Do **not** enable auto-assign public IPv4 on the private subnets.
+5. **Next** → **Next** → **Submit**.
 
-### 3.3 Create and attach an Internet Gateway
+Wait for status **CREATE_COMPLETE** (~3–5 minutes). This creates 33 AWS resources.
 
-1. **[VPC Console](https://us-east-1.console.aws.amazon.com/vpc/home?region=us-east-1#igws:)** → **Internet Gateways** → **Create internet gateway**.
-2. **Name tag:** `payalert-igw` → **Create internet gateway**.
-3. Select `payalert-igw` → **Actions** → **Attach to VPC** → select `payalert-vpc` → **Attach**.
+### 3.4 Save the stack outputs
 
-### 3.4 Configure the public route table
+1. **CloudFormation** → **Stacks** → `payalert-network-stack` → **Outputs** tab.
+2. Copy these values — you will need them in later steps:
 
-1. **[VPC Console](https://us-east-1.console.aws.amazon.com/vpc/home?region=us-east-1#routetables:)** → **Route Tables** → select the route table automatically created with `payalert-vpc`.
-2. Rename it: **Name tag** → `payalert-public-rt`.
-3. **Routes** tab → **Edit routes** → **Add route**:
-   - **Destination:** `0.0.0.0/0`
-   - **Target:** `payalert-igw`
-   - **Save changes**.
-4. **Subnet associations** tab → **Edit subnet associations** → select `payalert-public-1` and `payalert-public-2` → **Save associations**.
-
-### 3.5 Create a NAT Gateway
-
-The NAT Gateway allows private subnet instances to reach AWS APIs (SQS, DynamoDB) and install packages — without being reachable from the internet.
-
-1. **[VPC Console](https://us-east-1.console.aws.amazon.com/vpc/home?region=us-east-1#eips:)** → **Elastic IPs** → **Allocate Elastic IP address** → **Allocate**.
-   - Add **Name tag:** `payalert-eip`. Note the **Allocation ID**.
-
-2. **[VPC Console](https://us-east-1.console.aws.amazon.com/vpc/home?region=us-east-1#NatGateways:)** → **NAT Gateways** → **Create NAT gateway**.
-
-| Setting               | Value               |
-| --------------------- | ------------------- |
-| **Name**              | `payalert-nat-gw`   |
-| **Subnet**            | `payalert-public-1` |
-| **Connectivity type** | Public              |
-| **Elastic IP**        | `payalert-eip`      |
-
-3. **Create NAT gateway**. Wait for status **Available** (~60 seconds).
-
-### 3.6 Configure the private route table
-
-1. **VPC Console** → **Route Tables** → **Create route table**.
-
-| Setting      | Value                 |
-| ------------ | --------------------- |
-| **Name tag** | `payalert-private-rt` |
-| **VPC**      | `payalert-vpc`        |
-
-2. Select `payalert-private-rt` → **Routes** tab → **Edit routes** → **Add route**:
-   - **Destination:** `0.0.0.0/0`
-   - **Target:** `payalert-nat-gw`
-   - **Save changes**.
-3. **Subnet associations** tab → **Edit subnet associations** → select `payalert-private-1` and `payalert-private-2` → **Save associations**.
-
-### 3.7 Create security groups
-
-Three security groups control all network access.
-
-#### ALB security group (`PayAlertALBSG`)
-
-**[EC2 Console](https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#SecurityGroups:)** → **Security Groups** → **Create security group**.
-
-- **Name:** `PayAlertALBSG` — **VPC:** `payalert-vpc`
-
-Inbound rules:
-
-| Type       | Port | Source    | Purpose                                        |
-| ---------- | ---- | --------- | ---------------------------------------------- |
-| HTTP       | 80   | 0.0.0.0/0 | Public access to audit portal                  |
-| Custom TCP | 5001 | My IP     | Generator UI — locked to your IP address only  |
-
-> Keep port 5001 locked to **My IP**. This means only your workstation can reach the generator UI, even though the ALB is internet-facing.
-
-**Create security group**. Copy the **Security Group ID** — needed in the next step.
-
-#### EIC Endpoint security group (`PayAlertEICESG`)
-
-**Security Groups** → **Create security group**.
-
-- **Name:** `PayAlertEICESG` — **VPC:** `payalert-vpc`
-
-No inbound rules. Outbound rules (replace the default):
-
-| Type       | Port | Destination | Purpose                            |
-| ---------- | ---- | ----------- | ---------------------------------- |
-| Custom TCP | 22   | 10.0.0.0/16 | SSH from the endpoint into the VPC |
-
-**Create security group**.
-
-#### EC2 security group (`PayAlertEC2SG`)
-
-**Security Groups** → **Create security group**.
-
-- **Name:** `PayAlertEC2SG` — **VPC:** `payalert-vpc`
-
-Inbound rules:
-
-| Type       | Port | Source           | Purpose                              |
-| ---------- | ---- | ---------------- | ------------------------------------ |
-| SSH        | 22   | `PayAlertEICESG` | SSH tunnelled via EIC Endpoint only  |
-| Custom TCP | 3000 | `PayAlertALBSG`  | Audit portal — ALB only              |
-| Custom TCP | 5001 | `PayAlertALBSG`  | Generator UI — ALB only              |
-
-**Create security group**.
-
-> Port 22 is only reachable via the EIC Endpoint — not from the public internet. This means SSH is available without exposing port 22 externally.
-
-### 3.8 Create the EC2 Instance Connect Endpoint
-
-The EIC Endpoint is a managed tunnel that lets you SSH into private EC2 instances using your existing key pair, without a bastion host or public IP.
-
-1. **[VPC Console](https://us-east-1.console.aws.amazon.com/vpc/home?region=us-east-1#Endpoints:)** → **Endpoints** → **Create endpoint**.
-2. Configure:
-
-| Setting                 | Value                   |
-| ----------------------- | ----------------------- |
-| **Name tag**            | `payalert-eice`         |
-| **Service category**    | EC2 Instance Connect Endpoint |
-| **VPC**                 | `payalert-vpc`          |
-| **Security groups**     | `PayAlertEICESG`        |
-| **Subnet**              | `payalert-private-1`    |
-
-3. **Create endpoint**. Wait for status **Available** (~2 minutes).
+| Output key | Used in |
+|---|---|
+| `GeneratorInstanceId` | Step 4.3 — connect to the generator EC2 |
+| `AuditInstanceId` | Step 7.2 — connect to the audit portal EC2 |
+| `AlbDnsName` | Steps 10.3–10.4 — access the applications |
 
 ---
 
-## Step 4 — Launch the EC2 instance
+## Step 4 — Set up the key pair and connect to the generator EC2
 
 ### 4.1 Create a key pair
 
@@ -394,52 +320,38 @@ On macOS/Linux, set correct permissions:
 chmod 400 ~/Downloads/payalert-key.pem
 ```
 
-### 4.2 Launch the instance
+### 4.2 Get the generator instance ID
 
-1. **[EC2 Console](https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#LaunchInstances:)** → **Launch instances**.
-2. Configure:
+`payalert-ec2` was launched by the network stack in Step 3. Get its instance ID from the stack outputs:
 
-| Setting           | Value                                |
-| ----------------- | ------------------------------------ |
-| **Name**          | `payalert-ec2`                       |
-| **AMI**           | Ubuntu Server 26.04 LTS (64-bit x86) |
-| **Instance type** | `t3.micro`                           |
-| **Key pair**      | `payalert-key`                       |
+1. **CloudFormation** → **Stacks** → `payalert-network-stack` → **Outputs** tab.
+2. Copy the value for **`GeneratorInstanceId`** — this is the instance ID for `payalert-ec2`.
 
-3. Under **Network settings** → **Edit**:
-   - **VPC:** `payalert-vpc`
-   - **Subnet:** `payalert-private-1`
-   - **Auto-assign public IP:** **Disable**
-   - **Security group:** select existing → `PayAlertEC2SG`
-
-4. Expand **Advanced details** → **IAM instance profile** → select `LabRole` (or `PayAlertEC2Role`).
-5. **Launch instance**.
-
-### 4.3 Connect via SSH through the EIC Endpoint
+### 4.3 Connect via SSM Session Manager
 
 Wait ~60 seconds for the instance to enter the **Running** state and pass both status checks.
 
-Get the **Instance ID** from **EC2** → **Instances** → select `payalert-ec2` (format: `i-xxxxxxxxxxxxxxxxx`).
+**Browser (no plugin required):**
 
-**macOS / Linux / Git Bash (Windows):**
+EC2 → **Instances** → select `payalert-ec2` → **Connect** → **Session Manager** tab → **Connect**
+
+**AWS CLI:**
 
 ```bash
-ssh -i ~/Downloads/payalert-key.pem \
-  -o ProxyCommand="aws ec2-instance-connect open-tunnel --instance-id %h --region us-east-1" \
-  ubuntu@<INSTANCE_ID>
+aws ssm start-session --target <INSTANCE_ID> --region us-east-1
 ```
 
-**Windows (PowerShell + OpenSSH):**
+Replace `<INSTANCE_ID>` with the `GeneratorInstanceId` from **CloudFormation** → `payalert-network-stack` → **Outputs** (format: `i-xxxxxxxxxxxxxxxxx`).
 
-```powershell
-ssh -i "$HOME\Downloads\payalert-key.pem" `
-  -o ProxyCommand="aws ec2-instance-connect open-tunnel --instance-id %h --region us-east-1" `
-  ubuntu@<INSTANCE_ID>
+**After connecting, immediately run:**
+
+```bash
+bash
 ```
 
-> The EIC tunnel authenticates using your AWS CLI credentials (`~/.aws/credentials`). Ensure they are up-to-date if you restarted your Learner Lab session.
+SSM drops you into a restricted shell by default. Running `bash` gives you a full shell where `cd`, `source`, and all other built-ins work correctly.
 
-You can also connect from the **AWS Console**: **EC2** → **Instances** → select `payalert-ec2` → **Connect** → **EC2 Instance Connect** tab → **Connect** (this uses a browser-based terminal without needing the key pair).
+> SSM connects outbound via the NAT Gateway over HTTPS — no SSH port, no key pair, and no EIC Endpoint required. Ensure your AWS CLI credentials are up-to-date if you restarted your Learner Lab session.
 
 ---
 
@@ -447,41 +359,54 @@ You can also connect from the **AWS Console**: **EC2** → **Instances** → sel
 
 All commands in this section run **on the EC2 instance** unless noted otherwise.
 
-### 5.1 Update the system and install Python
+### 5.1 Verify system packages
+
+Python 3, pip, venv, and git were already installed by the `UserData` script in the network stack CloudFormation template. Verify:
+
+```bash
+python3 --version
+git --version
+```
+
+If either command is missing, install them:
 
 ```bash
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y python3 python3-pip python3-venv git
-python3 --version
 ```
 
-### 5.2 Copy the generator to the instance
+### 5.2 Clone the repository to the instance
 
-Run this **on your workstation**, replacing `<INSTANCE_ID>` with the EC2 Instance ID from Step 4.3.
+Run these commands **on the EC2 instance** via SSM Session Manager (Step 4.3).
 
-**macOS / Linux / Git Bash:**
+**Set up SSH for GitHub (first time only):**
 
 ```bash
-scp -i ~/Downloads/payalert-key.pem \
-  -o ProxyCommand="aws ec2-instance-connect open-tunnel --instance-id %h --region us-east-1" \
-  -r ./transaction-generator ubuntu@<INSTANCE_ID>:/tmp/
+ssh-keygen -t ed25519 -C "your@email.com"
+cat ~/.ssh/id_ed25519.pub
 ```
 
-**Windows (PowerShell + OpenSSH):**
+Copy the output, then add it to GitHub: **Settings** → **SSH and GPG keys** → **New SSH key** → paste → **Add SSH key**.
 
-```powershell
-scp -i "$HOME\Downloads\payalert-key.pem" `
-  -o ProxyCommand="aws ec2-instance-connect open-tunnel --instance-id %h --region us-east-1" `
-  -r .\transaction-generator ubuntu@<INSTANCE_ID>:/tmp/
-```
-
-Back on the EC2 instance:
+**Accept GitHub's host key (required before first clone):**
 
 ```bash
-sudo mkdir -p /opt/payalert
-sudo mv /tmp/transaction-generator /opt/payalert/transaction-generator
-sudo chown -R ubuntu:ubuntu /opt/payalert
+ssh -T git@github.com
 ```
+
+Type `yes` when prompted to accept the fingerprint. You will see `Hi <username>! You've successfully authenticated` — this is expected even if access is denied for the repo itself.
+
+**Clone and set up the application directory:**
+
+```bash
+sudo mkdir -p /opt/payalert-repo /opt/payalert
+sudo chown $(whoami):$(whoami) /opt/payalert-repo /opt/payalert
+git clone git@github.com:<your-username>/PayAlert.git /opt/payalert-repo
+sudo cp -r /opt/payalert-repo/transaction-generator /opt/payalert/transaction-generator
+sudo chown -R $(whoami):$(whoami) /opt/payalert
+```
+
+> Do **not** use `sudo git clone` — root does not have the SSH key and will get `Permission denied (publickey)`.
 
 ### 5.3 Install Python dependencies
 
@@ -518,40 +443,6 @@ deactivate
 
 You should see 5 transactions sent successfully. If you get `AccessDenied`, verify the IAM role is attached: **EC2** → **Instances** → select instance → **Security** tab → **IAM Role**.
 
-### 5.6 Create the systemd service
-
-```bash
-sudo tee /etc/systemd/system/payalert-generator.service > /dev/null <<'EOF'
-[Unit]
-Description=PayAlert Transaction Generator
-After=network.target
-
-[Service]
-Type=simple
-User=ubuntu
-WorkingDirectory=/opt/payalert/transaction-generator
-ExecStart=/opt/payalert/transaction-generator/.venv/bin/python3 generator.py
-EnvironmentFile=/opt/payalert/generator.env
-Restart=on-failure
-RestartSec=5s
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable --now payalert-generator
-sudo systemctl status payalert-generator
-```
-
-View live logs:
-
-```bash
-sudo journalctl -u payalert-generator -f
-```
-
 ---
 
 ## Step 6 — Set up the generator web UI
@@ -573,82 +464,83 @@ The UI will be accessible through the ALB after Step 8. You do not need to open 
 
 ### 6.2 Create the systemd service
 
+Run the setup script from the cloned repository:
+
 ```bash
-sudo tee /etc/systemd/system/payalert-portal.service > /dev/null <<'EOF'
-[Unit]
-Description=PayAlert Generator Web UI
-After=network.target
-
-[Service]
-Type=simple
-User=ubuntu
-WorkingDirectory=/opt/payalert/transaction-generator
-ExecStart=/opt/payalert/transaction-generator/.venv/bin/python3 app.py
-EnvironmentFile=/opt/payalert/generator.env
-Restart=on-failure
-RestartSec=5s
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable --now payalert-portal
-sudo systemctl status payalert-portal
+bash /opt/payalert-repo/scripts/setup-generator-service.sh
 ```
+
+The script writes `/etc/systemd/system/payalert-portal.service` using the current user, then enables and starts the service.
 
 ---
 
 ## Step 7 — Set up the audit portal
 
-The audit portal is a Next.js 16 app that reads from DynamoDB and gives fraud analysts a live dashboard.
+The audit portal is a Next.js 16 app that reads from DynamoDB and gives fraud analysts a live dashboard. It runs on a **dedicated** EC2 instance (`payalert-audit-ec2`) so the heavier Node.js workload does not compete with the transaction generator on `payalert-ec2`.
 
-All commands in this section run **on the EC2 instance** unless noted otherwise.
+All commands in this section run **on `payalert-audit-ec2`** unless noted otherwise.
 
-### 7.1 Install Node.js 20
+### 7.1 Get the audit instance ID
 
-Ubuntu 26.04 ships with an older Node.js. Install the LTS version via NodeSource:
+`payalert-audit-ec2` was launched by the network stack in Step 3. Get its instance ID from the stack outputs:
+
+1. **CloudFormation** → **Stacks** → `payalert-network-stack` → **Outputs** tab.
+2. Copy the value for **`AuditInstanceId`** — this is the instance ID for `payalert-audit-ec2`.
+
+Wait until the instance is **Running** and **Status checks** have passed before connecting (~60 seconds after stack completion).
+
+### 7.2 Connect to `payalert-audit-ec2`
+
+Use **SSM Session Manager** the same way as Step 4.3, but select **`payalert-audit-ec2`**:
+
+**Browser:** EC2 → **Instances** → select `payalert-audit-ec2` → **Connect** → **Session Manager** → **Connect**
+
+**CLI:** `aws ssm start-session --target <AUDIT_INSTANCE_ID> --region us-east-1`
+
+Replace `<AUDIT_INSTANCE_ID>` with the `AuditInstanceId` from **CloudFormation** → `payalert-network-stack` → **Outputs**.
+
+After connecting, run `bash` for a full shell (see Step 4.3).
+
+### 7.3 Verify system packages
+
+Git, curl, and Node.js 20 were already installed by the `UserData` script in the network stack CloudFormation template. Verify:
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
+git --version
 node --version   # should print v20.x.x
 ```
 
-### 7.2 Copy the audit portal to the instance
-
-Run this **on your workstation**:
-
-**macOS / Linux / Git Bash:**
+If either command is missing (e.g. on a manually launched instance), install them:
 
 ```bash
-rsync -avz --exclude='node_modules' --exclude='.next' \
-  -e "ssh -i ~/Downloads/payalert-key.pem -o 'ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id %h --region us-east-1'" \
-  ./audit-portal-v2/ ubuntu@<INSTANCE_ID>:/opt/payalert/audit-portal-v2/
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y git curl
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
 ```
 
-**Windows (PowerShell + OpenSSH — no rsync):**
+### 7.4 Clone the repository on the audit instance
 
-```powershell
-# Zip the portal directory (skips node_modules and .next which won't exist on dev machine)
-Compress-Archive -Path .\audit-portal-v2 -DestinationPath "$env:TEMP\audit-portal-v2.zip" -Force
+Set up **GitHub over SSH** on this instance if you have not already — same flow as **Step 5.2** (`ssh-keygen`, add `~/.ssh/id_ed25519.pub` to GitHub, then `ssh -T git@github.com` to accept the host key).
 
-# Copy the zip to the instance
-scp -i "$HOME\Downloads\payalert-key.pem" `
-  -o ProxyCommand="aws ec2-instance-connect open-tunnel --instance-id %h --region us-east-1" `
-  "$env:TEMP\audit-portal-v2.zip" ubuntu@<INSTANCE_ID>:/tmp/
-```
-
-Then on the EC2 instance (Windows path):
+Then:
 
 ```bash
-unzip /tmp/audit-portal-v2.zip -d /opt/payalert/
-sudo chown -R ubuntu:ubuntu /opt/payalert/audit-portal-v2
+sudo mkdir -p /opt/payalert-repo /opt/payalert
+sudo chown $(whoami):$(whoami) /opt/payalert-repo /opt/payalert
+git clone git@github.com:<your-username>/PayAlert.git /opt/payalert-repo
 ```
 
-### 7.3 Create the environment file
+You only need the repo on this machine to copy `audit-portal-v2`; you do not need the transaction generator here.
+
+### 7.5 Copy the audit portal into `/opt/payalert`
+
+```bash
+sudo cp -r /opt/payalert-repo/audit-portal-v2 /opt/payalert/audit-portal-v2
+sudo chown -R $(whoami):$(whoami) /opt/payalert/audit-portal-v2
+```
+
+### 7.6 Create the environment file
 
 ```bash
 cat > /opt/payalert/audit-portal-v2/.env.local <<'EOF'
@@ -662,7 +554,7 @@ EOF
 
 > Replace `ACCOUNT_ID` with your 12-digit AWS account ID. `DLQ_URL` and `MAIN_QUEUE_URL` are in the CloudFormation stack Outputs tab (Step 1.6).
 
-### 7.4 Install dependencies and build
+### 7.7 Install dependencies and build
 
 ```bash
 cd /opt/payalert/audit-portal-v2
@@ -672,127 +564,55 @@ npm run build
 
 The build takes 1–5 minutes. You should see a `✓ Compiled successfully` message at the end.
 
-### 7.5 Quick test
+### 7.8 Quick test
 
 ```bash
 cd /opt/payalert/audit-portal-v2
 npm start
 ```
 
-From another SSH session: `curl -s http://localhost:3000 | head -5` — you should see HTML. Press `Ctrl+C` to stop.
+From a **second SSM session** on **`payalert-audit-ec2`**: `curl -s http://localhost:3000 | head -5` — you should see HTML. Press `Ctrl+C` to stop the first session.
 
-### 7.6 Create the systemd service
+### 7.9 Create the systemd service
+
+Run the setup script from the cloned repository:
 
 ```bash
-sudo tee /etc/systemd/system/payalert-audit-portal.service > /dev/null <<'EOF'
-[Unit]
-Description=PayAlert Audit Portal
-After=network.target
-
-[Service]
-Type=simple
-User=ubuntu
-WorkingDirectory=/opt/payalert/audit-portal-v2
-ExecStart=/usr/bin/npm start
-EnvironmentFile=/opt/payalert/audit-portal-v2/.env.local
-Restart=on-failure
-RestartSec=5s
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable --now payalert-audit-portal
-sudo systemctl status payalert-audit-portal
+bash /opt/payalert-repo/scripts/setup-audit-portal-service.sh
 ```
+
+The script writes `/etc/systemd/system/payalert-audit-portal.service` using the current user, then enables and starts the service.
 
 ---
 
-## Step 8 — Create the Target Groups and ALB
+## Step 8 — Verify the ALB and target groups
 
-The ALB serves both applications from a single endpoint, using separate listeners and target groups.
+The ALB (`payalert-alb`), both target groups (`payalert-audit-tg` on port 3000 and `payalert-generator-tg` on port 5001), and both listeners (port 80 → audit portal, port 5001 → generator UI) were all created by the network stack in Step 3.
 
-### 8.1 Create the audit portal target group
+### 8.1 Get the ALB DNS name
 
-1. **[EC2 Console](https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#TargetGroups:)** → **Target Groups** → **Create target group**.
-2. Configure:
+1. **CloudFormation** → **Stacks** → `payalert-network-stack` → **Outputs** tab.
+2. Copy **`AlbDnsName`** — this is the base URL for both applications (e.g. `payalert-alb-123456789.us-east-1.elb.amazonaws.com`).
 
-| Setting               | Value               |
-| --------------------- | ------------------- |
-| **Target type**       | Instances           |
-| **Target group name** | `payalert-audit-tg` |
-| **Protocol**          | HTTP                |
-| **Port**              | `3000`              |
-| **VPC**               | `payalert-vpc`      |
+### 8.2 Check target group health
 
-3. Health checks: Protocol HTTP, Path `/`, Healthy threshold 2, Unhealthy threshold 3, Interval 30 s.
-4. **Next** → **Register targets** → select `payalert-ec2` → **Include as pending below** → **Create target group**.
+After the EC2 services are running (Steps 5–7), verify that both instances are registered and healthy:
 
-### 8.2 Create the generator target group
+1. **[EC2 Console](https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#TargetGroups:)** → **Target Groups**.
+2. Select `payalert-audit-tg` → **Targets** tab → wait for **Healthy** status.
+3. Select `payalert-generator-tg` → **Targets** tab → wait for **Healthy** status.
 
-1. **Target Groups** → **Create target group**.
-2. Configure:
-
-| Setting               | Value                   |
-| --------------------- | ----------------------- |
-| **Target type**       | Instances               |
-| **Target group name** | `payalert-generator-tg` |
-| **Protocol**          | HTTP                    |
-| **Port**              | `5001`                  |
-| **VPC**               | `payalert-vpc`          |
-
-3. Health checks: Protocol HTTP, Path `/`, Healthy threshold 2, Unhealthy threshold 3, Interval 30 s.
-4. **Next** → **Register targets** → select `payalert-ec2` → **Include as pending below** → **Create target group**.
-
-### 8.3 Create the Application Load Balancer
-
-1. **[EC2 Console](https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#LoadBalancers:)** → **Load Balancers** → **Create load balancer** → **Application Load Balancer**.
-2. Configure:
-
-| Setting              | Value                                                                          |
-| -------------------- | ------------------------------------------------------------------------------ |
-| **Name**             | `payalert-alb`                                                                 |
-| **Scheme**           | Internet-facing                                                                |
-| **IP address type**  | IPv4                                                                           |
-| **VPC**              | `payalert-vpc`                                                                 |
-| **Mappings**         | ☑ `us-east-1a` → `payalert-public-1` <br> ☑ `us-east-1b` → `payalert-public-2` |
-| **Security group**   | `PayAlertALBSG` (remove the default)                                           |
-
-3. **Listeners and routing** — add two listeners:
-
-| Listener | Protocol | Port | Default action                   |
-| -------- | -------- | ---- | -------------------------------- |
-| 1        | HTTP     | 80   | Forward to `payalert-audit-tg`   |
-| 2        | HTTP     | 5001 | Forward to `payalert-generator-tg` |
-
-Click **Add listener** to add the second row.
-
-4. **Create load balancer**.
-5. Wait ~2 minutes, then copy the **DNS name** (e.g. `payalert-alb-123456789.us-east-1.elb.amazonaws.com`). This is the base URL for both applications.
+Target registration and health checks can take 1–3 minutes after the applications start.
 
 ---
 
 ## Step 9 — Create the Launch Template and Auto Scaling Group
 
-The ASG ensures the audit portal remains available and can scale. The Launch Template is created from an AMI snapshot of the configured EC2 instance.
+The ASG ensures the audit portal remains available and can scale. The Launch Template is created from an AMI snapshot of **`payalert-audit-ec2`** so scaled instances only run the audit portal (the transaction generator stays on `payalert-ec2`).
 
-### 9.1 Prepare the instance and create an AMI
+### 9.1 Create an AMI from the audit portal instance
 
-Before taking the AMI, stop and disable the generator services so that ASG instances only run the audit portal (not the generator):
-
-```bash
-sudo systemctl stop payalert-generator payalert-portal
-sudo systemctl disable payalert-generator payalert-portal
-```
-
-> The original `payalert-ec2` will keep running these services — you are only disabling them for the AMI snapshot.
-
-Now take the AMI:
-
-1. **EC2** → **Instances** → select `payalert-ec2` → **Actions** → **Image and templates** → **Create image**.
+1. **EC2** → **Instances** → select **`payalert-audit-ec2`** → **Actions** → **Image and templates** → **Create image**.
 
 | Setting         | Value                 |
 | --------------- | --------------------- |
@@ -802,61 +622,42 @@ Now take the AMI:
 
 2. **Create image**. Wait for the AMI status to become **Available** (~2–5 minutes): **EC2** → **AMIs**.
 
-After the AMI is created, re-enable the generator services on the original EC2:
+`payalert-ec2` (generator + web UI) is **not** rebooted or modified by this step.
 
-```bash
-sudo systemctl enable --now payalert-generator payalert-portal
-```
+### 9.2 Deploy the ASG stack
 
-### 9.2 Create a Launch Template
+With the AMI ID from step 9.1, deploy `lambda/asg-stack.yaml`:
 
-1. **[EC2 Console](https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#LaunchTemplates:)** → **Launch Templates** → **Create launch template**.
-2. Configure:
+1. Open the **[CloudFormation Console](https://us-east-1.console.aws.amazon.com/cloudformation/home?region=us-east-1)** → **Create stack** → **With new resources (standard)**.
+2. **Template source:** Upload a template file → **Choose file** → select `lambda/asg-stack.yaml` → **Next**.
+3. **Stack name:** `payalert-asg-stack`
+4. Fill in the parameters:
 
-| Setting             | Value                                         |
-| ------------------- | --------------------------------------------- |
-| **Name**            | `payalert-portal-lt`                          |
-| **AMI**             | `payalert-portal-ami` (select from My AMIs)   |
-| **Instance type**   | `t3.large`                                    |
-| **Key pair**        | `payalert-key`                                |
-| **Security groups** | `PayAlertEC2SG`                               |
+| Parameter | Value |
+|---|---|
+| `Environment` | `dev` |
+| `AmiId` | AMI ID from step 9.1, e.g. `ami-xxxxxxxxxxxxxxxxx` |
+| `KeyPairName` | `payalert-key` |
+| `InstanceProfileName` | `LabInstanceProfile` |
 
-3. Expand **Advanced details** → **IAM instance profile** → select `LabRole` (or `PayAlertEC2Role`).
-4. **Create launch template**.
+5. **Next** → **Next** → **Submit**.
 
-### 9.3 Create the Auto Scaling Group
+Wait for status **CREATE_COMPLETE** (~2 minutes).
 
-1. **[EC2 Console](https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#AutoScalingGroups:)** → **Auto Scaling Groups** → **Create Auto Scaling group**.
-2. **Step 1 — Name and template:**
-   - **Name:** `payalert-portal-asg`
-   - **Launch template:** `payalert-portal-lt`
-   - **Next**.
+This creates:
+- **Launch Template** `payalert-portal-lt` — `t3.large`, your AMI, imports security group from the network stack
+- **Auto Scaling Group** `payalert-portal-asg` — min 1, max 2, desired 1; attached to `payalert-audit-tg`; ELB health checks, 120 s grace period
+- **Scaling policy** `payalert-cpu-target-tracking` — target 60% average CPU utilization, 120 s instance warmup
 
-3. **Step 2 — Instance launch options:**
-   - **VPC:** `payalert-vpc`
-   - **Availability Zones and subnets:** `payalert-private-1`, `payalert-private-2`
-   - **Next**.
+**Why 60% CPU:**
+The Next.js portal does server-side rendering and DynamoDB reads on every request. Targeting 60% leaves a 40% buffer so a new instance (which takes ~2 minutes to boot and pass health checks) can become ready before the existing instance reaches 100%. Scale-out fires as soon as the 3-datapoint breach threshold is crossed (~3 minutes of sustained load); scale-in has a built-in 15-minute cooldown to prevent flapping.
 
-4. **Step 3 — Load balancing:**
-   - ☑ **Attach to an existing load balancer**
-   - **Choose from your load balancer target groups** → `payalert-audit-tg`
-   - ☑ **Turn on Elastic Load Balancing health checks**
-   - **Next**.
+With `min=1` and `max=2`, this policy adds a second instance under sustained load and removes it once traffic subsides.
 
-5. **Step 4 — Configure group size:**
-
-| Setting              | Value |
-| -------------------- | ----- |
-| **Desired capacity** | `1`   |
-| **Minimum capacity** | `1`   |
-| **Maximum capacity** | `2`   |
-
-6. **Next** → **Next** → **Create Auto Scaling group**.
-
-### 9.4 Verify the target group health
+### 9.3 Verify the target group health
 
 1. **EC2** → **Target Groups** → `payalert-audit-tg` → **Targets** tab.
-2. Wait until both the EC2 and ASG instances show **Healthy** (~2–3 minutes).
+2. Wait until **all registered targets** show **Healthy** (~2–3 minutes).
 3. Open `http://<ALB_DNS_NAME>` in a browser — the audit portal should load via the ALB.
 
 ---
@@ -954,12 +755,11 @@ Any non-zero value means a transaction failed processing three times. Investigat
 To generate a higher volume of flagged transactions for audit portal demonstrations:
 
 ```bash
-# SSH into the generator EC2
-ssh -i ~/Downloads/payalert-key.pem \
-  -o ProxyCommand="aws ec2-instance-connect open-tunnel --instance-id %h --region us-east-1" \
-  ubuntu@<INSTANCE_ID>
+# Connect to the generator EC2 via SSM Session Manager
+# Browser: EC2 → Instances → payalert-ec2 → Connect → Session Manager → Connect
+# CLI: aws ssm start-session --target <INSTANCE_ID> --region us-east-1
 
-sudo systemctl stop payalert-generator
+sudo systemctl stop payalert-portal
 
 cd /opt/payalert/transaction-generator
 source .venv/bin/activate
@@ -973,7 +773,7 @@ Press `Ctrl+C` when done, then restart the service:
 
 ```bash
 deactivate
-sudo systemctl start payalert-generator
+sudo systemctl start payalert-portal
 ```
 
 ---
@@ -982,21 +782,28 @@ sudo systemctl start payalert-generator
 
 ### Stop the EC2 services
 
-SSH into the instance and run:
+Connect via SSM and stop services on **each** instance:
+
+**On `payalert-ec2` (generator):**
 
 ```bash
-sudo systemctl stop payalert-generator payalert-portal payalert-audit-portal
-sudo systemctl disable payalert-generator payalert-portal payalert-audit-portal
+sudo systemctl stop payalert-portal
+sudo systemctl disable payalert-portal
 ```
 
-### Delete the ASG and ALB
+**On `payalert-audit-ec2` (audit portal):**
 
-1. **EC2** → **Auto Scaling Groups** → select `payalert-portal-asg` → **Delete** → confirm.
-2. **EC2** → **Load Balancers** → select `payalert-alb` → **Actions** → **Delete** → confirm.
-3. **EC2** → **Target Groups** → select `payalert-audit-tg` → **Actions** → **Delete** → confirm.
-4. **EC2** → **Target Groups** → select `payalert-generator-tg` → **Actions** → **Delete** → confirm.
-5. **EC2** → **Launch Templates** → select `payalert-portal-lt` → **Actions** → **Delete** → confirm.
-6. **EC2** → **AMIs** → select `payalert-portal-ami` → **Actions** → **Deregister AMI** → confirm.
+```bash
+sudo systemctl stop payalert-audit-portal
+sudo systemctl disable payalert-audit-portal
+```
+
+### Delete the ASG stack
+
+1. **CloudFormation** → **Stacks** → select `payalert-asg-stack` → **Delete** → **Delete stack**.
+2. Wait for **DELETE_COMPLETE** (~2 minutes). This removes the ASG, Launch Template, and scaling policy.
+3. **EC2** → **AMIs** → select `payalert-portal-ami` → **Actions** → **Deregister AMI** → confirm.
+   (The AMI is not managed by CloudFormation — deregister it manually.)
 
 ### Delete the Lambda stack
 
@@ -1008,24 +815,14 @@ To also delete the retained table: **DynamoDB** → `payalert-transactions` → 
 
 To clean up S3: **S3** → `payalert-artifacts-{account-id}` → **Empty** → confirm, then **Delete**.
 
-### Delete the VPC and networking
+### Delete the network stack
 
-Delete in this order to avoid dependency errors:
+Ensure the ASG stack is deleted first (above) so no ASG instances remain registered to the ALB target group.
 
-1. **VPC** → **Endpoints** → select `payalert-eice` → **Actions** → **Delete VPC endpoints** → confirm.
-2. **VPC** → **NAT Gateways** → select `payalert-nat-gw` → **Actions** → **Delete NAT gateway** → confirm. Wait for status **Deleted** (~60 seconds).
-3. **VPC** → **Elastic IPs** → select `payalert-eip` → **Actions** → **Release Elastic IP address** → confirm.
-4. **EC2** → **Security Groups** → delete `PayAlertALBSG`, `PayAlertEICESG`, and `PayAlertEC2SG`.
-5. **VPC** → **Internet Gateways** → select `payalert-igw` → **Actions** → **Detach from VPC** → then **Delete**.
-6. **VPC** → **Subnets** → delete all four `payalert-*` subnets.
-7. **VPC** → **Route Tables** → delete `payalert-public-rt` and `payalert-private-rt`.
-8. **VPC** → **Your VPCs** → select `payalert-vpc` → **Actions** → **Delete VPC** → confirm.
+1. **CloudFormation** → **Stacks** → select `payalert-network-stack` → **Delete** → **Delete stack**.
+2. Wait for **DELETE_COMPLETE** (~5–10 minutes). This removes the ALB, EC2 instances, NAT Gateway, Elastic IP, security groups, subnets, route tables, Internet Gateway, and VPC in the correct order.
 
-### Terminate EC2 instances
-
-**EC2** → **Instances** → select `payalert-ec2` → **Instance state** → **Terminate instance**.
-
-> ASG instances are terminated automatically when the ASG is deleted.
+> If deletion gets stuck on the NAT Gateway, wait a minute and retry — NAT Gateways occasionally take longer to release the Elastic IP association.
 
 ---
 
@@ -1043,7 +840,6 @@ Delete in this order to avoid dependency errors:
 | NAT Gateway                | `payalert-nat-gw`                                |
 | Public route table         | `payalert-public-rt`                             |
 | Private route table        | `payalert-private-rt`                            |
-| EIC Endpoint               | `payalert-eice`                                  |
 | ALB security group         | `PayAlertALBSG`                                  |
 | EIC security group         | `PayAlertEICESG`                                 |
 | EC2 security group         | `PayAlertEC2SG`                                  |
@@ -1058,29 +854,24 @@ Delete in this order to avoid dependency errors:
 | SNS topic                  | `payalert-alerts-dev`                            |
 | Lambda function            | `payalert-transaction-processor-dev`             |
 | CloudWatch log group       | `/aws/lambda/payalert-transaction-processor-dev` |
-| CloudFormation stack       | `payalert-stack`                                 |
+| CloudFormation stack (Lambda)  | `payalert-stack`                             |
+| CloudFormation stack (Network) | `payalert-network-stack`                     |
+| CloudFormation stack (ASG)     | `payalert-asg-stack`                         |
 | S3 artifacts bucket        | `payalert-artifacts-{account-id}`                |
 | EC2 IAM role               | `LabRole` (or `PayAlertEC2Role`)                 |
+| Generator EC2              | `payalert-ec2` (`t3.micro`, `payalert-private-1`) |
+| Audit portal EC2           | `payalert-audit-ec2` (`t3.large`, `payalert-private-2`) |
 
-### SSH cheat sheet
+### SSM Session Manager cheat sheet
 
-All SSH commands use the EIC Endpoint tunnel — replace `<INSTANCE_ID>` with `i-xxxxxxxxxxxxxxxxx`.
+Replace `<INSTANCE_ID>` with `i-xxxxxxxxxxxxxxxxx`.
 
 ```bash
-# SSH into any private EC2 instance
-ssh -i ~/Downloads/payalert-key.pem \
-  -o ProxyCommand="aws ec2-instance-connect open-tunnel --instance-id %h --region us-east-1" \
-  ubuntu@<INSTANCE_ID>
+# Connect to any private EC2 instance (requires Session Manager plugin)
+aws ssm start-session --target <INSTANCE_ID> --region us-east-1
 
-# Copy a file to the instance
-scp -i ~/Downloads/payalert-key.pem \
-  -o ProxyCommand="aws ec2-instance-connect open-tunnel --instance-id %h --region us-east-1" \
-  ./local-file ubuntu@<INSTANCE_ID>:/remote/path/
-
-# Sync a directory to the instance (macOS/Linux/Git Bash)
-rsync -avz --exclude='node_modules' --exclude='.next' \
-  -e "ssh -i ~/Downloads/payalert-key.pem -o 'ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id %h --region us-east-1'" \
-  ./local-dir/ ubuntu@<INSTANCE_ID>:/remote/path/
+# Or use the browser — no plugin required:
+# EC2 → Instances → select instance → Connect → Session Manager → Connect
 ```
 
 > **AWS CLI credentials must be valid.** If the Learner Lab session was restarted, re-paste the credentials from the Academy portal into `~/.aws/credentials`.
@@ -1096,24 +887,26 @@ rsync -avz --exclude='node_modules' --exclude='.next' \
 | Check DLQ depth         | SQS → `payalert-transactions-dlq-dev` → Details pane                       |
 | Send a test message     | SQS → `payalert-transactions-queue-dev` → Send and receive messages        |
 | Invoke Lambda directly  | Lambda → `payalert-transaction-processor-dev` → Test tab                   |
-| Update stack            | CloudFormation → `payalert-stack` → Update                                 |
-| View stack outputs      | CloudFormation → `payalert-stack` → Outputs tab                            |
+| Update Lambda stack     | CloudFormation → `payalert-stack` → Update                                 |
+| View Lambda stack outputs | CloudFormation → `payalert-stack` → Outputs tab                          |
+| View network stack outputs | CloudFormation → `payalert-network-stack` → Outputs tab                 |
 | Check ALB health        | EC2 → Target Groups → `payalert-audit-tg` → Targets tab                   |
 | Check ASG activity      | EC2 → Auto Scaling Groups → `payalert-portal-asg` → Activity tab          |
 
 ### EC2 service management (on the instance)
 
 ```bash
-# View live logs
-sudo journalctl -u payalert-generator -f
+# View live logs (payalert-portal = generator web UI on payalert-ec2)
 sudo journalctl -u payalert-portal -f
 sudo journalctl -u payalert-audit-portal -f
 
 # Restart services
-sudo systemctl restart payalert-generator payalert-portal payalert-audit-portal
+sudo systemctl restart payalert-portal            # on payalert-ec2
+sudo systemctl restart payalert-audit-portal      # on payalert-audit-ec2
 
 # Check status
-sudo systemctl status payalert-generator payalert-portal payalert-audit-portal
+sudo systemctl status payalert-portal
+sudo systemctl status payalert-audit-portal
 ```
 
 ### Updating after a code change
@@ -1131,25 +924,19 @@ sudo systemctl status payalert-generator payalert-portal payalert-audit-portal
 
 **EC2 application change:**
 
+Connect via SSM on the instance you need (**`payalert-ec2`** for generator and web UI; **`payalert-audit-ec2`** for the audit portal), then:
+
 ```bash
-# Generator / web UI — rsync to the EC2 generator instance
-rsync -avz --exclude='.venv' --exclude='__pycache__' \
-  -e "ssh -i ~/Downloads/payalert-key.pem -o 'ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id %h --region us-east-1'" \
-  ./transaction-generator/ ubuntu@<INSTANCE_ID>:/opt/payalert/transaction-generator/
+# Generator / web UI
+cd /opt/payalert-repo && git pull
+sudo cp -r transaction-generator/* /opt/payalert/transaction-generator/
+sudo systemctl restart payalert-portal
 
-ssh -i ~/Downloads/payalert-key.pem \
-  -o ProxyCommand="aws ec2-instance-connect open-tunnel --instance-id %h --region us-east-1" \
-  ubuntu@<INSTANCE_ID> "sudo systemctl restart payalert-generator payalert-portal"
-
-# Audit portal — rebuild, rsync, restart, then create new AMI and refresh ASG
-rsync -avz --exclude='node_modules' --exclude='.next' \
-  -e "ssh -i ~/Downloads/payalert-key.pem -o 'ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id %h --region us-east-1'" \
-  ./audit-portal-v2/ ubuntu@<INSTANCE_ID>:/opt/payalert/audit-portal-v2/
-
-ssh -i ~/Downloads/payalert-key.pem \
-  -o ProxyCommand="aws ec2-instance-connect open-tunnel --instance-id %h --region us-east-1" \
-  ubuntu@<INSTANCE_ID> \
-  "cd /opt/payalert/audit-portal-v2 && npm install && npm run build && sudo systemctl restart payalert-audit-portal"
+# Audit portal — pull, rebuild, restart
+cd /opt/payalert-repo && git pull
+sudo cp -r audit-portal-v2/* /opt/payalert/audit-portal-v2/
+cd /opt/payalert/audit-portal-v2 && npm install && npm run build
+sudo systemctl restart payalert-audit-portal
 
 # After rebuilding, create a new AMI (Step 9.1) and update the Launch Template version
 # so new ASG instances get the latest build
