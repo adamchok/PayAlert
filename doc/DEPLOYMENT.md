@@ -362,14 +362,32 @@ All commands in this section run **on the EC2 instance** unless noted otherwise.
 
 ### 5.1 Set up SSH for GitHub (first time only)
 
+**1. Fork the repository**
+
+If you have not already, fork PayAlert to your own GitHub account: open the repo → **Fork** → **Create fork**.
+
+**2. Generate an SSH key on the EC2 instance**
+
 ```bash
 ssh-keygen -t ed25519 -C "your@email.com"
 cat ~/.ssh/id_ed25519.pub
 ```
 
-Copy the output, then add it to GitHub: **Settings** → **SSH and GPG keys** → **New SSH key** → paste → **Add SSH key**.
+Copy the output.
 
-Accept GitHub's host key:
+**3. Add the key as a Deploy Key on your fork**
+
+In your forked repo on GitHub: **Settings** → **Security and quality** → **Deploy keys** → **Add deploy key**
+
+| Field        | Value                              |
+|--------------|------------------------------------|
+| Title        | `payalert-ec2`                     |
+| Key          | paste the `id_ed25519.pub` output  |
+| Allow write access | ☐ leave unchecked (read-only is sufficient) |
+
+Click **Add key**.
+
+**4. Accept GitHub's host key**
 
 ```bash
 ssh -T git@github.com
@@ -471,12 +489,16 @@ After connecting, run `bash` for a full shell (see Step 4.3).
 
 ### 7.3 Set up SSH for GitHub (first time only)
 
-Same flow as Step 5.1 — generate a key, add it to GitHub, accept the host key:
+Same flow as Step 5.1, but use a different key title so GitHub can distinguish the two instances.
 
 ```bash
 ssh-keygen -t ed25519 -C "your@email.com"
 cat ~/.ssh/id_ed25519.pub
-# Add the key to GitHub: Settings → SSH and GPG keys → New SSH key
+```
+
+Add the output as a Deploy Key on your fork: **Settings** → **Security and quality** → **Deploy keys** → **Add deploy key** (title: `payalert-audit-ec2`, write access unchecked).
+
+```bash
 ssh -T git@github.com   # type yes to accept fingerprint
 ```
 
