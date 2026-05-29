@@ -360,27 +360,7 @@ SSM drops you into a restricted shell by default. Running `bash` gives you a ful
 
 All commands in this section run **on the EC2 instance** unless noted otherwise.
 
-### 5.1 Verify system packages
-
-Python 3, pip, venv, and git were already installed by the `UserData` script in the network stack CloudFormation template. Verify:
-
-```bash
-python3 --version
-git --version
-```
-
-If either command is missing, install them:
-
-```bash
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y python3 python3-pip python3-venv git
-```
-
-### 5.2 Clone the repository to the instance
-
-Run these commands **on the EC2 instance** via SSM Session Manager (Step 4.3).
-
-**Set up SSH for GitHub (first time only):**
+### 5.1 Set up SSH for GitHub (first time only)
 
 ```bash
 ssh-keygen -t ed25519 -C "your@email.com"
@@ -389,52 +369,54 @@ cat ~/.ssh/id_ed25519.pub
 
 Copy the output, then add it to GitHub: **Settings** → **SSH and GPG keys** → **New SSH key** → paste → **Add SSH key**.
 
-**Accept GitHub's host key (required before first clone):**
+Accept GitHub's host key:
 
 ```bash
 ssh -T git@github.com
 ```
 
-Type `yes` when prompted to accept the fingerprint. You will see `Hi <username>! You've successfully authenticated` — this is expected even if access is denied for the repo itself.
-
-**Clone and set up the application directory:**
-
-```bash
-sudo mkdir -p /opt/payalert-repo /opt/payalert
-sudo chown $(whoami):$(whoami) /opt/payalert-repo /opt/payalert
-git clone git@github.com:<your-username>/PayAlert.git /opt/payalert-repo
-sudo cp -r /opt/payalert-repo/transaction-generator /opt/payalert/transaction-generator
-sudo chown -R $(whoami):$(whoami) /opt/payalert
-```
+Type `yes` when prompted. You will see `Hi <username>! You've successfully authenticated`.
 
 > Do **not** use `sudo git clone` — root does not have the SSH key and will get `Permission denied (publickey)`.
 
-### 5.3 Install Python dependencies
+### 5.2 Run the setup script
+
+Replace the values below with your own, then run:
 
 ```bash
-cd /opt/payalert/transaction-generator
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-deactivate
+SQS_QUEUE_URL=https://sqs.us-east-1.amazonaws.com/ACCOUNT_ID/payalert-transactions-queue-dev \
+UI_USERNAME=payalert \
+UI_PASSWORD=YourStrongPassword \
+GITHUB_USERNAME=your-github-username \
+bash <(curl -fsSL https://raw.githubusercontent.com/<your-username>/PayAlert/master/scripts/setup-generator-ec2.sh)
 ```
 
-### 5.4 Create the environment file
-
-Replace `SQS_QUEUE_URL` with the `TransactionQueueUrl` from Step 1.6. Set a strong `UI_PASSWORD` — this is the login for the generator web UI.
+Or, if you have already cloned the repo manually:
 
 ```bash
-sudo tee /opt/payalert/generator.env > /dev/null <<'EOF'
-AWS_REGION=us-east-1
-SQS_QUEUE_URL=https://sqs.us-east-1.amazonaws.com/ACCOUNT_ID/payalert-transactions-queue-dev
-UI_USERNAME=payalert
-UI_PASSWORD=ChangeMe123!
-EOF
+SQS_QUEUE_URL=https://sqs.us-east-1.amazonaws.com/ACCOUNT_ID/payalert-transactions-queue-dev \
+UI_USERNAME=payalert \
+UI_PASSWORD=YourStrongPassword \
+GITHUB_USERNAME=your-github-username \
+bash /opt/payalert-repo/scripts/setup-generator-ec2.sh
 ```
 
-### 5.5 Run a quick test
+The script:
+1. Verifies/installs python3, venv, git
+2. Clones the repo to `/opt/payalert-repo`
+3. Deploys `transaction-generator` to `/opt/payalert/transaction-generator`
+4. Creates the Python virtualenv and installs dependencies
+5. Writes `/opt/payalert/generator.env`
+6. Installs and starts the `payalert-portal` systemd service
+
+`SQS_QUEUE_URL` is `TransactionQueueUrl` from the Step 1.6 CloudFormation outputs. Add `FORCE_ENV=1` to overwrite an existing `generator.env`. `AWS_REGION` defaults to `us-east-1` — set it if deploying to a different region.
+
+### 5.3 Verify the service and run a quick test
 
 ```bash
+sudo systemctl status payalert-portal
+
+# Send 5 test transactions
 cd /opt/payalert/transaction-generator
 source .venv/bin/activate
 export $(cat /opt/payalert/generator.env | xargs)
@@ -444,34 +426,19 @@ deactivate
 
 You should see 5 transactions sent successfully. If you get `AccessDenied`, verify the IAM role is attached: **EC2** → **Instances** → select instance → **Security** tab → **IAM Role**.
 
+The web UI (`app.py`) is bundled in the same directory. It will be accessible through the ALB after Step 8 — no separate setup required.
+
 ---
 
-## Step 6 — Set up the generator web UI
+## Step 6 — Verify the generator web UI
 
-The web UI (`app.py`) lives in the same `transaction-generator` directory already deployed in Step 5. It provides a browser control panel to start/stop the transaction stream and watch live logs via Server-Sent Events. Access is protected by HTTP Basic Auth — the browser will prompt for the `UI_USERNAME` and `UI_PASSWORD` you set in Step 5.4.
-
-### 6.1 Run a quick test
+The web UI is already running as part of the `payalert-portal` service started in Step 5.2.
 
 ```bash
-cd /opt/payalert/transaction-generator
-source .venv/bin/activate
-export $(cat /opt/payalert/generator.env | xargs)
-python3 app.py
+sudo journalctl -u payalert-portal -f
 ```
 
-You should see `* Running on http://0.0.0.0:5001`. Press `Ctrl+C`, then `deactivate`.
-
-The UI will be accessible through the ALB after Step 8. You do not need to open the instance's IP directly.
-
-### 6.2 Create the systemd service
-
-Run the setup script from the cloned repository:
-
-```bash
-bash /opt/payalert-repo/scripts/setup-generator-service.sh
-```
-
-The script writes `/etc/systemd/system/payalert-portal.service` using the current user, then enables and starts the service.
+You should see `* Running on http://0.0.0.0:5001`. The UI will be accessible through the ALB after Step 8.
 
 ---
 
@@ -502,90 +469,64 @@ Replace `<AUDIT_INSTANCE_ID>` with the `AuditInstanceId` from **CloudFormation**
 
 After connecting, run `bash` for a full shell (see Step 4.3).
 
-### 7.3 Verify system packages
+### 7.3 Set up SSH for GitHub (first time only)
 
-Git, curl, and Node.js 20 were already installed by the `UserData` script in the network stack CloudFormation template. Verify:
-
-```bash
-git --version
-node --version   # should print v20.x.x
-```
-
-If either command is missing (e.g. on a manually launched instance), install them:
+Same flow as Step 5.1 — generate a key, add it to GitHub, accept the host key:
 
 ```bash
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y git curl
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
+ssh-keygen -t ed25519 -C "your@email.com"
+cat ~/.ssh/id_ed25519.pub
+# Add the key to GitHub: Settings → SSH and GPG keys → New SSH key
+ssh -T git@github.com   # type yes to accept fingerprint
 ```
 
-### 7.4 Clone the repository on the audit instance
+### 7.4 Run the setup script
 
-Set up **GitHub over SSH** on this instance if you have not already — same flow as **Step 5.2** (`ssh-keygen`, add `~/.ssh/id_ed25519.pub` to GitHub, then `ssh -T git@github.com` to accept the host key).
-
-Then:
+Replace the values below with your own, then run:
 
 ```bash
-sudo mkdir -p /opt/payalert-repo /opt/payalert
-sudo chown $(whoami):$(whoami) /opt/payalert-repo /opt/payalert
-git clone git@github.com:<your-username>/PayAlert.git /opt/payalert-repo
+ACCOUNT_ID=123456789012 \
+PORTAL_USERNAME=admin \
+PORTAL_PASSWORD=YourStrongPassword \
+DYNAMODB_TABLE=payalert-transactions-dev \
+GITHUB_USERNAME=your-github-username \
+bash <(curl -fsSL https://raw.githubusercontent.com/<your-username>/PayAlert/master/scripts/setup-audit-portal-ec2.sh)
 ```
 
-You only need the repo on this machine to copy `audit-portal-v2`; you do not need the transaction generator here.
-
-### 7.5 Copy the audit portal into `/opt/payalert`
+Or, if you have already cloned the repo manually:
 
 ```bash
-sudo cp -r /opt/payalert-repo/audit-portal-v2 /opt/payalert/audit-portal-v2
-sudo chown -R $(whoami):$(whoami) /opt/payalert/audit-portal-v2
+ACCOUNT_ID=123456789012 \
+PORTAL_USERNAME=admin \
+PORTAL_PASSWORD=YourStrongPassword \
+DYNAMODB_TABLE=payalert-transactions-dev \
+GITHUB_USERNAME=your-github-username \
+bash /opt/payalert-repo/scripts/setup-audit-portal-ec2.sh
 ```
 
-### 7.6 Create the environment file
+The script:
+1. Verifies/installs Node.js 20, git
+2. Clones the repo to `/opt/payalert-repo`
+3. Deploys `audit-portal-v2` to `/opt/payalert/audit-portal-v2`
+4. Writes `.env.local` (auto-generates `AUTH_SECRET` if not supplied)
+5. Runs `npm ci && npm run build` (1–5 minutes)
+6. Installs and starts the `payalert-audit-portal` systemd service
+
+`ACCOUNT_ID` is your 12-digit AWS account ID. Add `FORCE_ENV=1` to overwrite an existing `.env.local`. `AWS_REGION` defaults to `us-east-1` and `DYNAMODB_TABLE` defaults to `payalert-transactions-dev` — set either if your deployment differs.
+
+> **ASG note:** If you plan to use multiple instances behind the ASG, generate `AUTH_SECRET` once with `openssl rand -base64 32` and pass the same value to all instances so sessions stay valid across targets.
+
+### 7.5 Verify the service
 
 ```bash
-cat > /opt/payalert/audit-portal-v2/.env.local <<'EOF'
-DYNAMODB_TABLE=payalert-transactions-dev
-AWS_REGION=us-east-1
-NEXT_PUBLIC_ENVIRONMENT=prod
-DLQ_URL=https://sqs.us-east-1.amazonaws.com/ACCOUNT_ID/payalert-transactions-dlq-dev
-MAIN_QUEUE_URL=https://sqs.us-east-1.amazonaws.com/ACCOUNT_ID/payalert-transactions-queue-dev
-AUTH_SECRET=replace-with-openssl-rand-base64-32-output
-PORTAL_USERNAME=admin
-PORTAL_PASSWORD=ChangeMe123!
-EOF
+sudo systemctl status payalert-audit-portal
+sudo journalctl -u payalert-audit-portal -f
+
+# Quick smoke test (from a second SSM session)
+curl -s http://localhost:3000 | head -5
 ```
 
-> Replace `ACCOUNT_ID` with your 12-digit AWS account ID. `DLQ_URL` and `MAIN_QUEUE_URL` are in the CloudFormation stack Outputs tab (Step 1.6).
-
-### 7.7 Install dependencies and build
-
-```bash
-cd /opt/payalert/audit-portal-v2
-npm install
-npm run build
-```
-
-The build takes 1–5 minutes. You should see a `✓ Compiled successfully` message at the end.
-
-### 7.8 Quick test
-
-```bash
-cd /opt/payalert/audit-portal-v2
-npm start
-```
-
-From a **second SSM session** on **`payalert-audit-ec2`**: `curl -s http://localhost:3000 | head -5` — you should see HTML. Press `Ctrl+C` to stop the first session.
-
-### 7.9 Create the systemd service
-
-Run the setup script from the cloned repository:
-
-```bash
-bash /opt/payalert-repo/scripts/setup-audit-portal-service.sh
-```
-
-The script writes `/etc/systemd/system/payalert-audit-portal.service` using the current user, then enables and starts the service.
+You should see HTML. The portal will be accessible through the ALB after Step 8.
 
 ---
 
@@ -934,23 +875,19 @@ sudo systemctl status payalert-audit-portal
 
 **EC2 application change:**
 
-Connect via SSM on the instance you need (**`payalert-ec2`** for generator and web UI; **`payalert-audit-ec2`** for the audit portal), then:
+Re-run the setup scripts — they pull the latest commit, redeploy, rebuild, and restart the service:
 
 ```bash
-# Generator / web UI
-cd /opt/payalert-repo && git pull
-sudo cp -r transaction-generator/* /opt/payalert/transaction-generator/
-sudo systemctl restart payalert-portal
+# On payalert-ec2 (generator + web UI)
+SQS_QUEUE_URL=<from Step 1.6> UI_PASSWORD=<your password> GITHUB_USERNAME=<username> \
+bash /opt/payalert-repo/scripts/setup-generator-ec2.sh
 
-# Audit portal — pull, rebuild, restart
-cd /opt/payalert-repo && git pull
-sudo cp -r audit-portal-v2/* /opt/payalert/audit-portal-v2/
-cd /opt/payalert/audit-portal-v2 && npm install && npm run build
-sudo systemctl restart payalert-audit-portal
-
-# After rebuilding, create a new AMI (Step 9.1) and update the Launch Template version
-# so new ASG instances get the latest build
+# On payalert-audit-ec2 (audit portal)
+ACCOUNT_ID=<your 12-digit ID> PORTAL_USERNAME=admin PORTAL_PASSWORD=<your password> DYNAMODB_TABLE=payalert-transactions-dev GITHUB_USERNAME=<username> \
+bash /opt/payalert-repo/scripts/setup-audit-portal-ec2.sh
 ```
+
+After rebuilding the audit portal, create a new AMI (Step 9.1) and update the Launch Template version so new ASG instances get the latest build.
 
 ### Minimum IAM permissions for the deploying identity
 
