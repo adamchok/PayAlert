@@ -169,6 +169,7 @@ Save the file.
 | `AlertRiskThreshold` | `50`                                          |
 | `TransactionTTLDays` | `90`                                          |
 | `LambdaRoleArn`      | `arn:aws:iam::<your-account-id>:role/LabRole` |
+| `EnableForceFail`    | `false`                                       |
 
 > **Resource tagging:** All resources in this stack are tagged `Project: PayAlert`, `Group: payalert-group-4`, and `Environment: dev`. These tags are applied automatically — no manual action needed.
 
@@ -191,7 +192,7 @@ Wait for status **CREATE_COMPLETE** (~2–3 minutes).
 | ----------------------- | ---------------------------------------------------------------------------------- |
 | `TransactionQueueUrl`   | `https://sqs.us-east-1.amazonaws.com/123456789012/payalert-transactions-queue-dev` |
 | `DLQUrl`                | `https://sqs.us-east-1.amazonaws.com/123456789012/payalert-transactions-dlq-dev`   |
-| `TransactionsTableName` | `payalert-transactions`                                                            |
+| `TransactionsTableName` | `payalert-transactions-dev`                                                        |
 | `AlertTopicArn`         | `arn:aws:sns:us-east-1:123456789012:payalert-alerts-dev`                           |
 
 ### 1.7 Confirm the SNS email subscription
@@ -544,11 +545,14 @@ sudo chown -R $(whoami):$(whoami) /opt/payalert/audit-portal-v2
 
 ```bash
 cat > /opt/payalert/audit-portal-v2/.env.local <<'EOF'
-DYNAMODB_TABLE=payalert-transactions
+DYNAMODB_TABLE=payalert-transactions-dev
 AWS_REGION=us-east-1
 NEXT_PUBLIC_ENVIRONMENT=prod
 DLQ_URL=https://sqs.us-east-1.amazonaws.com/ACCOUNT_ID/payalert-transactions-dlq-dev
 MAIN_QUEUE_URL=https://sqs.us-east-1.amazonaws.com/ACCOUNT_ID/payalert-transactions-queue-dev
+AUTH_SECRET=replace-with-openssl-rand-base64-32-output
+PORTAL_USERNAME=admin
+PORTAL_PASSWORD=ChangeMe123!
 EOF
 ```
 
@@ -646,7 +650,7 @@ Wait for status **CREATE_COMPLETE** (~2 minutes).
 
 This creates:
 - **Launch Template** `payalert-portal-lt` — `t3.large`, your AMI, imports security group from the network stack
-- **Auto Scaling Group** `payalert-portal-asg` — min 1, max 2, desired 1; attached to `payalert-audit-tg`; ELB health checks, 120 s grace period
+- **Auto Scaling Group** `payalert-portal-asg` — min 1, max 2, desired 1; attached to `payalert-audit-tg`; ELB health checks, 300 s grace period
 - **Scaling policy** `payalert-cpu-target-tracking` — target 60% average CPU utilization, 120 s instance warmup
 
 **Why 60% CPU:**
