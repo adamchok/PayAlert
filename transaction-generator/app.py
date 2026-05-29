@@ -49,6 +49,11 @@ def verify_password(username: str, password: str) -> str | None:
         return username
     return None
 
+@app.get('/health')
+def health() -> tuple:
+    return jsonify({'status': 'ok'}), 200
+
+
 # ── SSE pub-sub ───────────────────────────────────────────────────────────────
 
 _subscribers: list[queue.Queue] = []

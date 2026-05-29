@@ -614,6 +614,10 @@ Target registration and health checks can take 1–3 minutes after the applicati
 
 The ASG ensures the audit portal remains available and can scale. The Launch Template is created from an AMI snapshot of **`payalert-audit-ec2`** so scaled instances only run the audit portal (the transaction generator stays on `payalert-ec2`).
 
+> **Important:** Do **not** manually create a Launch Template or Auto Scaling group through the EC2 Console. The CloudFormation stack in Step 9.2 creates both automatically. Manually creating either resource before deploying the stack causes `AlreadyExists` errors and leaves orphaned resources that block deployment.
+>
+> If you already created them manually: **EC2 → Auto Scaling Groups** → delete `payalert-portal-asg`, then **EC2 → Launch Templates** → delete the manually-created template, then proceed to Step 9.2.
+
 ### 9.1 Create an AMI from the audit portal instance
 
 1. **EC2** → **Instances** → select **`payalert-audit-ec2`** → **Actions** → **Image and templates** → **Create image**.
@@ -625,6 +629,8 @@ The ASG ensures the audit portal remains available and can scale. The Launch Tem
 | **No reboot**   | ☑ Enable              |
 
 2. **Create image**. Wait for the AMI status to become **Available** (~2–5 minutes): **EC2** → **AMIs**.
+
+> After the image is created, the console may show a **"Create launch template"** or **"Launch instance from AMI"** button — ignore both. Proceed directly to Step 9.2.
 
 `payalert-ec2` (generator + web UI) is **not** rebooted or modified by this step.
 
