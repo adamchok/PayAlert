@@ -31,8 +31,8 @@ Parameters:
   UbuntuAmiId:
     Type: AWS::EC2::Image::Id
     Description: >
-      AMI ID for Ubuntu Server 26.04 LTS (64-bit x86) in us-east-1.
-      Find it in EC2 Console → AMIs → Public images → search "ubuntu-26.04".
+      AMI ID for Ubuntu Server 24.04 LTS (64-bit x86) in us-east-1.
+      Find it in EC2 Console → AMIs → Public images → search "ubuntu-24.04".
 
   InstanceProfileName:
     Type: String
@@ -40,6 +40,27 @@ Parameters:
     Description: >
       Name of the IAM instance profile to attach to EC2 instances.
       In AWS Academy Learner Labs this is typically 'LabInstanceProfile'.
+
+  CertificateArn:
+    Type: String
+    Default: ''
+    Description: >
+      ACM certificate ARN for HTTPS on port 443. Leave empty for HTTP-only (lab default).
+      When set, port 80 redirects to 443 and the audit portal is served over HTTPS.
+
+  ALBLogging:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: >
+      Enable ALB access logging to S3. Creates a dedicated S3 bucket when true.
+      May require additional IAM permissions not available in Learner Labs.
+
+# ── Conditions ────────────────────────────────────────────────────────────────
+
+Conditions:
+  HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
+  EnableLogging:  !Equals [!Ref ALBLogging, 'true']
 
 # ── Resources ─────────────────────────────────────────────────────────────────
 
@@ -71,7 +92,7 @@ Resources:
       VpcId: !Ref VPC
       CidrBlock: 10.0.1.0/24
       AvailabilityZone: !Select [0, !GetAZs '']
-      MapPublicIpOnLaunch: true
+      MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
           Value: payalert-public-1
@@ -84,7 +105,7 @@ Resources:
       VpcId: !Ref VPC
       CidrBlock: 10.0.2.0/24
       AvailabilityZone: !Select [1, !GetAZs '']
-      MapPublicIpOnLaunch: true
+      MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
           Value: payalert-public-2
@@ -135,6 +156,9 @@ Resources:
       InternetGatewayId: !Ref InternetGateway
 
   # ── NAT Gateway ───────────────────────────────────────────────────────────────
+  # Single NAT Gateway in AZ-a (cost-optimised for lab). For production add a
+  # second EIP + NatGateway in PublicSubnet2 and route PrivateSubnet2 through it
+  # to eliminate cross-AZ charges and achieve AZ-level HA.
 
   ElasticIP:
     Type: AWS::EC2::EIP
@@ -225,65 +249,54 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupName: PayAlertALBSG
-      GroupDescription: ALB — port 80 public, port 5001 workstation only
+      GroupDescription: ALB - port 80 public, port 443 when HTTPS enabled, port 5001 workstation only
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
           CidrIp: 0.0.0.0/0
-          Description: Public access to audit portal
+          Description: HTTP - redirects to HTTPS when CertificateArn is set
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS audit portal - active when CertificateArn is set
         - IpProtocol: tcp
           FromPort: 5001
           ToPort: 5001
           CidrIp: !Ref WorkstationCidr
-          Description: Generator UI — workstation only
+          Description: Generator UI - workstation only
       Tags:
         - Key: Name
           Value: PayAlertALBSG
         - Key: Project
           Value: PayAlert
 
-  EICESecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupName: PayAlertEICESG
-      GroupDescription: EIC Endpoint — outbound SSH into VPC only
-      VpcId: !Ref VPC
-      SecurityGroupEgress:
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: 10.0.0.0/16
-          Description: SSH from endpoint into VPC
-      Tags:
-        - Key: Name
-          Value: PayAlertEICESG
-        - Key: Project
-          Value: PayAlert
+  # EICESecurityGroup and the matching SSH ingress rule on EC2SecurityGroup are
+  # omitted — EIC Endpoint is disabled (Learner Lab IAM constraint). Access EC2
+  # instances via SSM Session Manager instead (DEPLOYMENT.md Step 4.3).
+  #
+  # To re-enable EIC: uncomment EICESecurityGroup here, uncomment EICEndpoint
+  # below, and add the SSH ingress rule back to EC2SecurityGroup.
 
   EC2SecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupName: PayAlertEC2SG
-      GroupDescription: EC2 instances — SSH via EICE, app ports via ALB only
+      GroupDescription: EC2 instances - app ports via ALB only; SSH via SSM (no direct inbound)
       VpcId: !Ref VPC
       SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          SourceSecurityGroupId: !Ref EICESecurityGroup
-          Description: SSH via EIC Endpoint only
         - IpProtocol: tcp
           FromPort: 3000
           ToPort: 3000
           SourceSecurityGroupId: !Ref ALBSecurityGroup
-          Description: Audit portal — ALB only
+          Description: Audit portal - ALB only
         - IpProtocol: tcp
           FromPort: 5001
           ToPort: 5001
           SourceSecurityGroupId: !Ref ALBSecurityGroup
-          Description: Generator UI — ALB only
+          Description: Generator UI - ALB only
       Tags:
         - Key: Name
           Value: PayAlertEC2SG
@@ -293,6 +306,19 @@ Resources:
   # ── EIC Endpoint ──────────────────────────────────────────────────────────────
   # Commented out: Learner Lab IAM role lacks ec2-instance-connect:OpenTunnel.
   # Use SSM Session Manager instead (Step 4.3 in DEPLOYMENT.md).
+  #
+  # EICESecurityGroup:
+  #   Type: AWS::EC2::SecurityGroup
+  #   Properties:
+  #     GroupName: PayAlertEICESG
+  #     GroupDescription: EIC Endpoint - outbound SSH into VPC only
+  #     VpcId: !Ref VPC
+  #     SecurityGroupEgress:
+  #       - IpProtocol: tcp
+  #         FromPort: 22
+  #         ToPort: 22
+  #         CidrIp: 10.0.0.0/16
+  #         Description: SSH from endpoint into VPC
   #
   # EICEndpoint:
   #   Type: AWS::EC2::InstanceConnectEndpoint
@@ -366,6 +392,159 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  # ── S3 server access logging (sink) + ALB access logs bucket ─────────────────
+
+  S3AccessLogsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub payalert-s3-access-logs-${AWS::AccountId}-${AWS::Region}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      LoggingConfiguration:
+        DestinationBucketName: !Sub payalert-alb-logs-${AWS::AccountId}-${AWS::Region}
+        LogFilePrefix: s3-access-logs-bucket/
+      Tags:
+        - Key: Project
+          Value: PayAlert
+        - Key: Environment
+          Value: !Ref Environment
+
+  S3AccessLogsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3AccessLogsBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowS3LogDeliveryFromALBLogsBucket
+            Effect: Allow
+            Principal:
+              Service: logging.s3.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub arn:${AWS::Partition}:s3:::${S3AccessLogsBucket}/alb-logs-bucket/*
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:s3:::${ALBLogsBucket}
+          - Sid: AllowS3LogDeliveryAclCheck
+            Effect: Allow
+            Principal:
+              Service: logging.s3.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !Sub arn:${AWS::Partition}:s3:::${S3AccessLogsBucket}
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt S3AccessLogsBucket.Arn
+              - !Sub '${S3AccessLogsBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  ALBLogsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub payalert-alb-logs-${AWS::AccountId}-${AWS::Region}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LoggingConfiguration:
+        DestinationBucketName: !Ref S3AccessLogsBucket
+        LogFilePrefix: alb-logs-bucket/
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireAfter90Days
+            Status: Enabled
+            ExpirationInDays: 90
+      Tags:
+        - Key: Project
+          Value: PayAlert
+        - Key: Environment
+          Value: !Ref Environment
+
+  ALBLogsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ALBLogsBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: delivery.logs.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub arn:${AWS::Partition}:s3:::${ALBLogsBucket}/AWSLogs/${AWS::AccountId}/*
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+          - Effect: Allow
+            Principal:
+              Service: delivery.logs.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !Sub arn:${AWS::Partition}:s3:::${ALBLogsBucket}
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+          - Sid: AllowS3LogDeliveryFromAccessLogsBucket
+            Effect: Allow
+            Principal:
+              Service: logging.s3.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub arn:${AWS::Partition}:s3:::${ALBLogsBucket}/s3-access-logs-bucket/*
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:s3:::${S3AccessLogsBucket}
+          - Sid: AllowS3LogDeliveryAclFromAccessLogsBucket
+            Effect: Allow
+            Principal:
+              Service: logging.s3.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !Sub arn:${AWS::Partition}:s3:::${ALBLogsBucket}
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:s3:::${S3AccessLogsBucket}
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt ALBLogsBucket.Arn
+              - !Sub '${ALBLogsBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
   # ── Application Load Balancer ─────────────────────────────────────────────────
 
   ALB:
@@ -379,6 +558,16 @@ Resources:
       Subnets:
         - !Ref PublicSubnet1
         - !Ref PublicSubnet2
+      LoadBalancerAttributes:
+        - Key: routing.http.drop_invalid_header_fields.enabled
+          Value: 'true'
+        - Key: access_logs.s3.enabled
+          Value: !If
+            - EnableLogging
+            - 'true'
+            - 'false'
+        - Key: access_logs.s3.bucket
+          Value: !Ref ALBLogsBucket
       Tags:
         - Key: Project
           Value: PayAlert
@@ -386,6 +575,11 @@ Resources:
           Value: payalert-group-4
         - Key: Environment
           Value: !Ref Environment
+
+  # ── Target Groups ─────────────────────────────────────────────────────────────
+  # AuditTargetGroup has no static Targets — the ASG manages instance registration.
+  # AuditInstance (from this stack) is intentionally excluded to prevent dual-serving
+  # alongside ASG instances when the asg-stack is deployed.
 
   AuditTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -395,10 +589,11 @@ Resources:
       Port: 3000
       VpcId: !Ref VPC
       TargetType: instance
-      Targets:
-        - Id: !Ref AuditInstance
       HealthCheckProtocol: HTTP
       HealthCheckPath: /
+      # Auth middleware returns 302 redirect on /; allow redirects as healthy.
+      Matcher:
+        HttpCode: '200-302'
       HealthyThresholdCount: 2
       UnhealthyThresholdCount: 3
       HealthCheckIntervalSeconds: 30
@@ -425,15 +620,39 @@ Resources:
         - Key: Project
           Value: PayAlert
 
+  # ── ALB Listeners ─────────────────────────────────────────────────────────────
+
+  # When CertificateArn is set: this listener serves HTTPS on 443.
+  # When CertificateArn is empty: this listener serves HTTP on 80 (lab default).
   AuditListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ALB
+      Protocol: !If [HasCertificate, HTTPS, HTTP]
+      Port: !If [HasCertificate, 443, 80]
+      Certificates: !If
+        - HasCertificate
+        - - CertificateArn: !Ref CertificateArn
+        - !Ref AWS::NoValue
+      SslPolicy: !If [HasCertificate, ELBSecurityPolicy-TLS13-1-2-2021-06, !Ref AWS::NoValue]
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref AuditTargetGroup
+
+  # HTTP→HTTPS redirect — only created when CertificateArn is set.
+  HttpRedirectListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: HasCertificate
     Properties:
       LoadBalancerArn: !Ref ALB
       Protocol: HTTP
       Port: 80
       DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref AuditTargetGroup
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: '443'
+            StatusCode: HTTP_301
 
   GeneratorListener:
     Type: AWS::ElasticLoadBalancingV2::Listener

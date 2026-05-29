@@ -6,6 +6,7 @@ import {
 } from '@aws-sdk/client-sqs'
 import { sqsClient, DLQ_URL, MAIN_QUEUE_URL } from '@/lib/sqs'
 import type { DlqMessage } from '@/lib/types'
+import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,7 +69,7 @@ export async function GET() {
 
     return Response.json({ queueDepth, inFlight, messages })
   } catch (err) {
-    console.error('[dlq GET]', err)
+    logger.error('[dlq GET] fetch failed', err)
     return Response.json({ error: 'Failed to fetch DLQ' }, { status: 500 })
   }
 }
@@ -120,7 +121,7 @@ export async function POST(request: Request) {
 
     return Response.json({ ok: true })
   } catch (err) {
-    console.error('[dlq POST]', err)
+    logger.error('[dlq POST] action failed', err)
     return Response.json({ error: 'Action failed' }, { status: 500 })
   }
 }

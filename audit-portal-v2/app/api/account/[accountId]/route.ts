@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { queryByAccount } from '@/lib/queries'
+import { logger } from '@/lib/logger'
 
 export async function GET(
   request: NextRequest,
@@ -13,7 +14,7 @@ export async function GET(
     const flagged = items.filter((tx) => tx.isFlagged).length
     return Response.json({ accountId, items, count: items.length, flagged })
   } catch (err) {
-    console.error('[api/account]', err)
+    logger.error('[api/account] query failed', err)
     return Response.json({ error: 'Failed to query account' }, { status: 500 })
   }
 }

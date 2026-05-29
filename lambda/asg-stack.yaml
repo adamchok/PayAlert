@@ -50,6 +50,16 @@ Resources:
           - Fn::ImportValue: !Sub payalert-ec2-sg-id-${Environment}
         IamInstanceProfile:
           Name: !Ref InstanceProfileName
+        MetadataOptions:
+          HttpTokens: required
+          HttpPutResponseHopLimit: 1
+        BlockDeviceMappings:
+          - DeviceName: /dev/sda1
+            Ebs:
+              VolumeSize: 20
+              VolumeType: gp3
+              Encrypted: true
+              DeleteOnTermination: true
         TagSpecifications:
           - ResourceType: instance
             Tags:
@@ -80,7 +90,7 @@ Resources:
       TargetGroupARNs:
         - Fn::ImportValue: !Sub payalert-audit-tg-arn-${Environment}
       HealthCheckType: ELB
-      HealthCheckGracePeriod: 120
+      HealthCheckGracePeriod: 300
       Tags:
         - Key: Project
           Value: PayAlert
@@ -104,7 +114,6 @@ Resources:
         PredefinedMetricSpecification:
           PredefinedMetricType: ASGAverageCPUUtilization
         TargetValue: 60.0
-        EstimatedInstanceWarmup: 120
 
 # ── Outputs ───────────────────────────────────────────────────────────────────
 

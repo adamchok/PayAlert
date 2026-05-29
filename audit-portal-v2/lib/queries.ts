@@ -4,12 +4,28 @@ import { docClient, TABLE_NAME } from './dynamo'
 import { todayMYT } from './utils'
 import type { Transaction } from './types'
 
+const CURSOR_KEYS = new Set(['transactionId', 'datePartition', 'riskLevel', 'timestamp', 'accountId'])
+
 function encodeCursor(key: Record<string, unknown>): string {
   return Buffer.from(JSON.stringify(key)).toString('base64url')
 }
 
 function decodeCursor(cursor: string): Record<string, unknown> {
-  return JSON.parse(Buffer.from(cursor, 'base64url').toString('utf-8'))
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf-8'))
+  } catch {
+    throw new Error('Malformed cursor')
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error('Malformed cursor')
+  }
+  for (const key of Object.keys(parsed as object)) {
+    if (!CURSOR_KEYS.has(key)) {
+      throw new Error(`Invalid cursor key: ${key}`)
+    }
+  }
+  return parsed as Record<string, unknown>
 }
 
 export async function queryByDate(
@@ -97,19 +113,25 @@ export async function queryLastNDays(n: number): Promise<{ date: string; count: 
     return d.toISOString().slice(0, 10)
   })
 
-  const results = await Promise.all(
-    dates.map(async (date) => {
-      const resp = await docClient.send(
-        new QueryCommand({
-          TableName: TABLE_NAME,
-          IndexName: 'DatePartitionIndex',
-          KeyConditionExpression: 'datePartition = :dp',
-          ExpressionAttributeValues: { ':dp': date },
-          Select: 'COUNT',
-        })
-      )
-      return { date, count: resp.Count ?? 0 }
-    })
-  )
+  const BATCH = 5
+  const results: { date: string; count: number }[] = []
+  for (let i = 0; i < dates.length; i += BATCH) {
+    const batch = dates.slice(i, i + BATCH)
+    const batchResults = await Promise.all(
+      batch.map(async (date) => {
+        const resp = await docClient.send(
+          new QueryCommand({
+            TableName: TABLE_NAME,
+            IndexName: 'DatePartitionIndex',
+            KeyConditionExpression: 'datePartition = :dp',
+            ExpressionAttributeValues: { ':dp': date },
+            Select: 'COUNT',
+          })
+        )
+        return { date, count: resp.Count ?? 0 }
+      })
+    )
+    results.push(...batchResults)
+  }
   return results.reverse()
 }

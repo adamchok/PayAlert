@@ -64,21 +64,21 @@ def process_transaction(table: Any, transaction: dict) -> None:
     if not transaction_id:
         raise ValueError("Missing required field: transactionId")
 
-    if transaction.get("_forceFail"):
+    if os.environ.get("ENABLE_FORCE_FAIL") == "true" and transaction.get("_forceFail"):
         raise ValueError("Forced failure for DLQ demo (transactionId=%s)" % transaction_id)
 
     now_utc = datetime.now(timezone.utc)
-
-    # Synthetic fields added at processing time
-    transaction["processedAt"] = now_utc.isoformat()
-    transaction["ttl"] = int(now_utc.timestamp()) + TTL_SECONDS
-
-    # datePartition enables efficient GSI range scans by calendar day.
-    # The generator emits ISO-8601 timestamps starting with "YYYY-MM-DD".
     raw_ts: str = transaction.get("timestamp", now_utc.isoformat())
-    transaction["datePartition"] = raw_ts[:10]
+    enriched: dict = {
+        **transaction,
+        "processedAt": now_utc.isoformat(),
+        "ttl": int(now_utc.timestamp()) + TTL_SECONDS,
+        # datePartition enables efficient GSI range scans by calendar day.
+        # The generator emits ISO-8601 timestamps starting with "YYYY-MM-DD".
+        "datePartition": raw_ts[:10],
+    }
 
-    item = _clean_item(transaction)
+    item = _clean_item(enriched)
 
     try:
         table.put_item(
@@ -91,19 +91,19 @@ def process_transaction(table: Any, transaction: dict) -> None:
             return
         raise
 
-    risk_score: int = transaction.get("riskScore", 0)
-    risk_level: str = transaction.get("riskLevel", "UNKNOWN")
+    risk_score: int = enriched.get("riskScore", 0)
+    risk_level: str = enriched.get("riskLevel", "UNKNOWN")
     logger.info(
         "Stored transaction=%s account=%s riskScore=%d riskLevel=%s isFlagged=%s",
         transaction_id,
-        transaction.get("accountId"),
+        enriched.get("accountId"),
         risk_score,
         risk_level,
-        transaction.get("isFlagged"),
+        enriched.get("isFlagged"),
     )
 
     if ALERT_TOPIC_ARN and risk_score >= ALERT_RISK_THRESHOLD:
-        _publish_alert(transaction)
+        _publish_alert(enriched)
 
 
 # ── SNS alert ─────────────────────────────────────────────────────────────────

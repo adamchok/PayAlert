@@ -486,30 +486,21 @@ def build_description(tx_type: str, merchant: dict, account: dict, recipient: di
     return f"{tx_type.title()} – {name}"
 
 
-def generate_transaction(
-    target_account: dict | None = None,
-    fraud_mode: bool = False,
-    dlq_fail_rate: float = 0.0,
-) -> dict[str, Any]:
-    """Build a single enriched transaction payload."""
-
-    account = target_account or random.choice(ACCOUNTS)
-    ts      = now_myt()
-
-    # ── Inject fraud scenario ─────────────────────────────────────────────────
-    fraud_scenario = None
+def _pick_scenario(fraud_mode: bool) -> str | None:
     if fraud_mode or random.random() < 0.05:
-        fraud_scenario = random.choice([
-            "high_amount", "late_night", "cross_border_atm", "velocity",
-        ])
+        return random.choice(["high_amount", "late_night", "cross_border_atm", "velocity"])
+    return None
 
-    # ── Transaction type ──────────────────────────────────────────────────────
+
+def _resolve_tx_context(
+    account: dict, fraud_scenario: str | None, ts: Any
+) -> tuple[str, dict, str, dict | None, float, str, Any]:
+    """Return (tx_type, merchant, channel, recipient, amount, currency, ts)."""
     tx_type  = weighted_choice(TX_TYPES, TX_TYPE_WEIGHTS)
     merchant = pick_merchant(tx_type)
 
-    # Fraud scenario overrides
     if fraud_scenario == "high_amount":
-        tx_type = "PURCHASE"
+        tx_type  = "PURCHASE"
         merchant = random.choice(MERCHANTS_GENERAL)
     elif fraud_scenario == "late_night":
         ts = ts.replace(hour=random.randint(0, 4), minute=random.randint(0, 59))
@@ -519,18 +510,13 @@ def generate_transaction(
     elif fraud_scenario == "velocity":
         tx_type = "PURCHASE"
 
-    # ── Channel ───────────────────────────────────────────────────────────────
-    channel = random.choice(merchant["channels"])
-
-    # ── Amount & Currency ─────────────────────────────────────────────────────
+    channel  = random.choice(merchant["channels"])
     currency = merchant["currency"]
     amount   = build_amount(merchant, tx_type)
 
     if fraud_scenario == "high_amount":
-        lo, hi = merchant["amountRange"]
         amount = round_to_cents(account["tierSpendCap"] * random.uniform(1.6, 3.0) / FX_RATES.get(currency, 1.0))
 
-    # ── Transfer recipient (TRANSFER type only) ───────────────────────────────
     recipient: dict | None = None
     if tx_type == "TRANSFER":
         others    = [a for a in ACCOUNTS if a["accountId"] != account["accountId"]]
@@ -538,105 +524,148 @@ def generate_transaction(
         currency  = "MYR"
         amount    = round_to_cents(random.uniform(20, min(account["tierSpendCap"] * 0.5, 5000)))
 
-    # ── Transaction ID & Reference ────────────────────────────────────────────
-    transaction_id = str(uuid.uuid4())
-    ref_id         = reference_id(ts)
+    return tx_type, merchant, channel, recipient, amount, currency, ts
 
-    # ── Online / Mobile enrichment ────────────────────────────────────────────
+
+def _build_digital_fields(channel: str, merchant: dict) -> dict[str, Any]:
     ip_prefixes = FOREIGN_IP_PREFIXES if merchant["merchantCountry"] != "MY" else MY_IP_PREFIXES
-    ip_address  = random_ip(ip_prefixes) if channel in ("ONLINE", "MOBILE_APP") else None
-    device_id   = random_device_id()     if channel == "MOBILE_APP"             else None
-    device_os   = random.choice(DEVICE_OS_OPTIONS) if channel == "MOBILE_APP"   else None
-    app_version = random.choice(APP_VERSIONS)      if channel == "MOBILE_APP"   else None
-    user_agent  = (
-        random.choice(USER_AGENTS_MOBILE)  if channel == "MOBILE_APP" else
-        random.choice(USER_AGENTS_DESKTOP) if channel == "ONLINE"      else None
-    )
+    return {
+        "ip_address":  random_ip(ip_prefixes) if channel in ("ONLINE", "MOBILE_APP") else None,
+        "device_id":   random_device_id()     if channel == "MOBILE_APP"             else None,
+        "device_os":   random.choice(DEVICE_OS_OPTIONS) if channel == "MOBILE_APP"   else None,
+        "app_version": random.choice(APP_VERSIONS)      if channel == "MOBILE_APP"   else None,
+        "user_agent":  (
+            random.choice(USER_AGENTS_MOBILE)  if channel == "MOBILE_APP" else
+            random.choice(USER_AGENTS_DESKTOP) if channel == "ONLINE"      else None
+        ),
+    }
 
-    # ── FX enrichment ─────────────────────────────────────────────────────────
+
+def _assemble_payload(
+    *,
+    account: dict,
+    merchant: dict,
+    tx_type: str,
+    channel: str,
+    amount: float,
+    currency: str,
+    recipient: dict | None,
+    digital: dict[str, Any],
+    risk_score: int,
+    risk_level: str,
+    risk_flags: list,
+    is_flagged: bool,
+    flag_reason: str,
+    description: str,
+    transaction_id: str,
+    ref_id: str,
+    ts: Any,
+    fraud_scenario: str | None,
+    dlq_fail_rate: float,
+) -> dict[str, Any]:
     exchange_rate = FX_RATES.get(currency, 1.0)
     amount_myr    = round_to_cents(amount * exchange_rate) if currency != "MYR" else amount
 
-    # ── Description ───────────────────────────────────────────────────────────
-    description = build_description(tx_type, merchant, account, recipient)
-
-    # ── Risk scoring ──────────────────────────────────────────────────────────
-    risk_score, risk_level, risk_flags, is_flagged, flag_reason = calculate_risk(
-        account, merchant, amount, currency, tx_type, channel, ts
-    )
-
-    # ── Assemble payload ──────────────────────────────────────────────────────
     payload: dict[str, Any] = {
-        # ── Core fields (required by Lambda processor) ──
-        "transactionId": transaction_id,
-        "accountId":     account["accountId"],
-        "amount":        amount,
-        "currency":      currency,
-        "timestamp":     iso8601(ts),
-        "merchantId":    merchant["merchantId"],
-
-        # ── Transaction classification ──
-        "transactionType":    tx_type,
-        "referenceId":        ref_id,
-        "description":        description,
-        "channel":            channel,
-
-        # ── Merchant details ──
+        "transactionId":    transaction_id,
+        "accountId":        account["accountId"],
+        "amount":           amount,
+        "currency":         currency,
+        "timestamp":        iso8601(ts),
+        "merchantId":       merchant["merchantId"],
+        "transactionType":  tx_type,
+        "referenceId":      ref_id,
+        "description":      description,
+        "channel":          channel,
         "merchantName":     merchant["merchantName"],
         "merchantCategory": merchant["merchantCategory"],
         "merchantCity":     merchant["merchantCity"],
         "merchantState":    merchant["merchantState"],
         "merchantCountry":  merchant["merchantCountry"],
-
-        # ── Customer details ──
-        "customerId":    account["customerId"],
-        "customerName":  account["customerName"],
-        "customerTier":  account["customerTier"],
-        "cardLast4":     account["cardLast4"],
-        "cardType":      account["cardType"],
-
-        # ── Location ──
+        "customerId":       account["customerId"],
+        "customerName":     account["customerName"],
+        "customerTier":     account["customerTier"],
+        "cardLast4":        account["cardLast4"],
+        "cardType":         account["cardType"],
         "location": {
             "city":    merchant["merchantCity"],
             "state":   merchant["merchantState"],
             "country": merchant["merchantCountry"],
         },
-
-        # ── FX ──
-        "exchangeRate": exchange_rate,
-        "amountMYR":    amount_myr,
-
-        # ── Risk ──
-        "riskScore":  risk_score,
-        "riskLevel":  risk_level,
-        "riskFlags":  risk_flags,
-        "isFlagged":  is_flagged,
-        "flagReason": flag_reason,
-
-        # ── Generator metadata ──
+        "exchangeRate":     exchange_rate,
+        "amountMYR":        amount_myr,
+        "riskScore":        risk_score,
+        "riskLevel":        risk_level,
+        "riskFlags":        risk_flags,
+        "isFlagged":        is_flagged,
+        "flagReason":       flag_reason,
         "generatorVersion": GENERATOR_VERSION,
     }
 
-    # Optional fields (only present when applicable)
-    if ip_address:
-        payload["ipAddress"] = ip_address
-    if user_agent:
-        payload["userAgent"] = user_agent
-    if device_id:
-        payload["deviceId"]   = device_id
-        payload["deviceOS"]   = device_os
-        payload["appVersion"] = app_version
+    if digital["ip_address"]:
+        payload["ipAddress"] = digital["ip_address"]
+    if digital["user_agent"]:
+        payload["userAgent"] = digital["user_agent"]
+    if digital["device_id"]:
+        payload["deviceId"]   = digital["device_id"]
+        payload["deviceOS"]   = digital["device_os"]
+        payload["appVersion"] = digital["app_version"]
     if recipient:
         payload["recipientAccountId"] = recipient["accountId"]
         payload["recipientName"]      = recipient["customerName"]
         payload["transferPurpose"]    = random.choice(TRANSFER_PURPOSES)
     if fraud_scenario:
         payload["fraudScenario"] = fraud_scenario
-
     if dlq_fail_rate > 0.0 and random.random() < dlq_fail_rate:
         payload["_forceFail"] = True
 
     return payload
+
+
+def generate_transaction(
+    target_account: dict | None = None,
+    fraud_mode: bool = False,
+    dlq_fail_rate: float = 0.0,
+) -> dict[str, Any]:
+    """Build a single enriched transaction payload."""
+    account        = target_account or random.choice(ACCOUNTS)
+    ts             = now_myt()
+    fraud_scenario = _pick_scenario(fraud_mode)
+
+    tx_type, merchant, channel, recipient, amount, currency, ts = _resolve_tx_context(
+        account, fraud_scenario, ts
+    )
+
+    transaction_id = str(uuid.uuid4())
+    ref_id         = reference_id(ts)
+    digital        = _build_digital_fields(channel, merchant)
+    description    = build_description(tx_type, merchant, account, recipient)
+
+    risk_score, risk_level, risk_flags, is_flagged, flag_reason = calculate_risk(
+        account, merchant, amount, currency, tx_type, channel, ts
+    )
+
+    return _assemble_payload(
+        account=account,
+        merchant=merchant,
+        tx_type=tx_type,
+        channel=channel,
+        amount=amount,
+        currency=currency,
+        recipient=recipient,
+        digital=digital,
+        risk_score=risk_score,
+        risk_level=risk_level,
+        risk_flags=risk_flags,
+        is_flagged=is_flagged,
+        flag_reason=flag_reason,
+        description=description,
+        transaction_id=transaction_id,
+        ref_id=ref_id,
+        ts=ts,
+        fraud_scenario=fraud_scenario,
+        dlq_fail_rate=dlq_fail_rate,
+    )
 
 
 # ── SQS Sender ─────────────────────────────────────────────────────────────────

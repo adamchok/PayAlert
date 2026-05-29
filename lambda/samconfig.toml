@@ -1,15 +1,15 @@
-version = 0.1
+version = 1.0
 
 [default.deploy.parameters]
 stack_name = "payalert"
 resolve_s3 = true
 s3_prefix = "payalert"
-region = "ap-southeast-1"
+region = "us-east-1"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
 disable_rollback = true
-parameter_overrides = "Environment=\"prod\" AlertEmail=\"adam.c11304@gmail.com\" AlertRiskThreshold=\"50\" TransactionTTLDays=\"90\""
+parameter_overrides = "Environment=\"prod\" AlertEmail=\"adam.c11304@gmail.com\" AlertRiskThreshold=\"50\" TransactionTTLDays=\"90\" LambdaRoleArn=\"arn:aws:iam::REPLACE_WITH_ACCOUNT_ID:role/LabRole\" EnableForceFail=\"false\""
 image_repositories = []
 
 [default.global.parameters]
-region = "ap-southeast-1"
+region = "us-east-1"

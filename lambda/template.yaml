@@ -42,6 +42,13 @@ Parameters:
       ARN of the existing IAM role to attach to the Lambda function.
       In AWS Academy Learner Labs use: arn:aws:iam::<account-id>:role/LabRole
 
+  EnableForceFail:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: >
+      Enable _forceFail backdoor for DLQ demo mode. NEVER set to true in production.
+
 # ── Globals ───────────────────────────────────────────────────────────────────
 
 Globals:
@@ -62,6 +69,8 @@ Resources:
 
   TransactionDLQ:
     Type: AWS::SQS::Queue
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
     Properties:
       QueueName: !Sub payalert-transactions-dlq-${Environment}
       MessageRetentionPeriod: 1209600   # 14 days — maximum SQS retention
@@ -78,11 +87,13 @@ Resources:
 
   TransactionQueue:
     Type: AWS::SQS::Queue
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
     Properties:
       QueueName: !Sub payalert-transactions-queue-${Environment}
       # VisibilityTimeout must be >= 6 × Lambda timeout (6 × 30s = 180s)
       VisibilityTimeout: 180
-      MessageRetentionPeriod: 86400     # 1 day
+      MessageRetentionPeriod: 604800     # 7 days — prevents message loss during extended Lambda downtime
       SqsManagedSseEnabled: true
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt TransactionDLQ.Arn
@@ -102,7 +113,10 @@ Resources:
     DeletionPolicy: Retain              # Prevent accidental data loss on stack delete
     UpdateReplacePolicy: Retain
     Properties:
-      TableName: payalert-transactions
+      # NOTE: Renaming this table on an existing stack causes CloudFormation to
+      # delete the old table (retained) and create a new empty one. Run a data
+      # migration before updating if the stack is already deployed.
+      TableName: !Sub payalert-transactions-${Environment}
       BillingMode: PAY_PER_REQUEST      # Scales automatically; no capacity planning needed
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
@@ -161,12 +175,55 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  # ── Customer-managed KMS key (logs, SNS) ───────────────────────────────────────
+
+  PayAlertKmsKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: PayAlert CMK for encrypted CloudWatch Logs and SNS
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Id: payalert-kms-policy
+        Statement:
+          - Sid: EnableRootPermissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: '*'
+          - Sid: AllowCloudWatchLogs
+            Effect: Allow
+            Principal:
+              Service: !Sub logs.${AWS::Region}.amazonaws.com
+            Action:
+              - kms:Encrypt*
+              - kms:Decrypt*
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:Describe*
+            Resource: '*'
+            Condition:
+              ArnLike:
+                kms:EncryptionContext:aws:logs:arn: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:*
+          - Sid: AllowSNS
+            Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey*
+            Resource: '*'
+
   # ── SNS Alert Topic ──────────────────────────────────────────────────────────
 
   AlertTopic:
     Type: AWS::SNS::Topic
     Properties:
       TopicName: !Sub payalert-alerts-${Environment}
+      KmsMasterKeyId: !GetAtt PayAlertKmsKey.Arn
       Tags:
         - Key: Project
           Value: PayAlert
@@ -199,6 +256,7 @@ Resources:
           ALERT_TOPIC_ARN: !Ref AlertTopic
           ALERT_RISK_THRESHOLD: !Ref AlertRiskThreshold
           TTL_DAYS: !Ref TransactionTTLDays
+          ENABLE_FORCE_FAIL: !Ref EnableForceFail
       Role: !Ref LambdaRoleArn
       Events:
         SQSTrigger:
@@ -219,8 +277,11 @@ Resources:
 
   TransactionProcessorLogGroup:
     Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
     Properties:
       LogGroupName: !Sub /aws/lambda/payalert-transaction-processor-${Environment}
+      KmsKeyId: !GetAtt PayAlertKmsKey.Arn
       RetentionInDays: 30
       Tags:
         - Key: Project
