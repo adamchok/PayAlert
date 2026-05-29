@@ -423,10 +423,9 @@ Resources:
       VpcId: !Ref VPC
       TargetType: instance
       HealthCheckProtocol: HTTP
-      HealthCheckPath: /
-      # Auth middleware returns 302 redirect on /; allow redirects as healthy.
+      HealthCheckPath: /api/health
       Matcher:
-        HttpCode: '200-302'
+        HttpCode: '200'
       HealthyThresholdCount: 2
       UnhealthyThresholdCount: 3
       HealthCheckIntervalSeconds: 30
@@ -445,7 +444,7 @@ Resources:
       Targets:
         - Id: !Ref GeneratorInstance
       HealthCheckProtocol: HTTP
-      HealthCheckPath: /
+      HealthCheckPath: /health
       HealthyThresholdCount: 2
       UnhealthyThresholdCount: 3
       HealthCheckIntervalSeconds: 30
