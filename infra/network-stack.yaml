@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  PayAlert — Network infrastructure: VPC, subnets, gateways, route tables,
+  PayAlert - Network infrastructure: VPC, subnets, gateways, route tables,
   security groups, EC2 instances, ALB, and target groups.
 
 # ── Parameters ────────────────────────────────────────────────────────────────
@@ -305,73 +305,6 @@ Resources:
           Value: CapstoneEC2SG
         - Key: Project
           Value: Capstone
-
-  # ── SSM VPC Interface Endpoints ──────────────────────────────────────────────
-  # Allows SSM Session Manager to reach instances in private subnets without
-  # routing through the NAT Gateway, reducing egress cost and latency.
-
-  SSMEndpointSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupName: PayAlertSSMEndpointSG
-      GroupDescription: VPC Interface Endpoints - inbound HTTPS from EC2 instances
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          SourceSecurityGroupId: !Ref EC2SecurityGroup
-          Description: HTTPS from EC2 instances to SSM endpoints
-      Tags:
-        - Key: Name
-          Value: PayAlertSSMEndpointSG
-        - Key: Project
-          Value: Capstone
-        - Key: Group
-          Value: '4'
-        - Key: Scenario
-          Value: PayAlert
-        - Key: Environment
-          Value: !Ref Environment
-
-  SSMEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcId: !Ref VPC
-      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssm
-      VpcEndpointType: Interface
-      PrivateDnsEnabled: true
-      SubnetIds:
-        - !Ref PrivateSubnet1
-        - !Ref PrivateSubnet2
-      SecurityGroupIds:
-        - !Ref SSMEndpointSecurityGroup
-
-  SSMMessagesEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcId: !Ref VPC
-      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssmmessages
-      VpcEndpointType: Interface
-      PrivateDnsEnabled: true
-      SubnetIds:
-        - !Ref PrivateSubnet1
-        - !Ref PrivateSubnet2
-      SecurityGroupIds:
-        - !Ref SSMEndpointSecurityGroup
-
-  EC2MessagesEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcId: !Ref VPC
-      ServiceName: !Sub com.amazonaws.${AWS::Region}.ec2messages
-      VpcEndpointType: Interface
-      PrivateDnsEnabled: true
-      SubnetIds:
-        - !Ref PrivateSubnet1
-        - !Ref PrivateSubnet2
-      SecurityGroupIds:
-        - !Ref SSMEndpointSecurityGroup
 
   # ── EC2: Transaction Generator + Web UI ───────────────────────────────────────
 
