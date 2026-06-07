@@ -321,7 +321,7 @@ Resources:
         Fn::Base64: |
           #!/bin/bash
           apt-get update -y
-          apt-get install -y python3 python3-pip python3-venv git
+          apt-get install -y python3 python3-pip python3-full git
           mkdir -p /opt/payalert /opt/payalert-repo
       Tags:
         - Key: Name
