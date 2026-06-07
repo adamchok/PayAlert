@@ -21,13 +21,6 @@ Parameters:
     AllowedPattern: '^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$'
     ConstraintDescription: Must be a valid CIDR block (e.g. 203.0.113.5/32)
 
-  KeyPairName:
-    Type: AWS::EC2::KeyPair::KeyName
-    Default: payalert-key
-    Description: >
-      EC2 key pair name. Required by the Launch Template — not needed for
-      SSM Session Manager access.
-
   UbuntuAmiId:
     Type: AWS::EC2::Image::Id
     Description: >
@@ -69,9 +62,11 @@ Resources:
         - Key: Name
           Value: payalert-vpc
         - Key: Project
-          Value: PayAlert
+          Value: Capstone
         - Key: Group
-          Value: payalert-group-4
+          Value: '4'
+        - Key: Scenario
+          Value: PayAlert
         - Key: Environment
           Value: !Ref Environment
 
@@ -88,7 +83,13 @@ Resources:
         - Key: Name
           Value: payalert-public-1
         - Key: Project
+          Value: Capstone
+        - Key: Group
+          Value: '4'
+        - Key: Scenario
           Value: PayAlert
+        - Key: Environment
+          Value: !Ref Environment
 
   PublicSubnet2:
     Type: AWS::EC2::Subnet
@@ -101,7 +102,13 @@ Resources:
         - Key: Name
           Value: payalert-public-2
         - Key: Project
+          Value: Capstone
+        - Key: Group
+          Value: '4'
+        - Key: Scenario
           Value: PayAlert
+        - Key: Environment
+          Value: !Ref Environment
 
   PrivateSubnet1:
     Type: AWS::EC2::Subnet
@@ -114,7 +121,13 @@ Resources:
         - Key: Name
           Value: payalert-private-1
         - Key: Project
+          Value: Capstone
+        - Key: Group
+          Value: '4'
+        - Key: Scenario
           Value: PayAlert
+        - Key: Environment
+          Value: !Ref Environment
 
   PrivateSubnet2:
     Type: AWS::EC2::Subnet
@@ -127,7 +140,13 @@ Resources:
         - Key: Name
           Value: payalert-private-2
         - Key: Project
+          Value: Capstone
+        - Key: Group
+          Value: '4'
+        - Key: Scenario
           Value: PayAlert
+        - Key: Environment
+          Value: !Ref Environment
 
   # ── Internet Gateway ──────────────────────────────────────────────────────────
 
@@ -138,7 +157,7 @@ Resources:
         - Key: Name
           Value: payalert-igw
         - Key: Project
-          Value: PayAlert
+          Value: Capstone
 
   IGWAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
@@ -160,7 +179,7 @@ Resources:
         - Key: Name
           Value: payalert-eip
         - Key: Project
-          Value: PayAlert
+          Value: Capstone
 
   NatGateway:
     Type: AWS::EC2::NatGateway
@@ -171,7 +190,7 @@ Resources:
         - Key: Name
           Value: payalert-nat-gw
         - Key: Project
-          Value: PayAlert
+          Value: Capstone
 
   # ── Route Tables ──────────────────────────────────────────────────────────────
 
@@ -183,7 +202,7 @@ Resources:
         - Key: Name
           Value: payalert-public-rt
         - Key: Project
-          Value: PayAlert
+          Value: Capstone
 
   PublicRoute:
     Type: AWS::EC2::Route
@@ -213,7 +232,7 @@ Resources:
         - Key: Name
           Value: payalert-private-rt
         - Key: Project
-          Value: PayAlert
+          Value: Capstone
 
   PrivateRoute:
     Type: AWS::EC2::Route
@@ -260,16 +279,9 @@ Resources:
           Description: Generator UI - workstation only
       Tags:
         - Key: Name
-          Value: PayAlertALBSG
+          Value: CapstoneALBSG
         - Key: Project
-          Value: PayAlert
-
-  # EICESecurityGroup and the matching SSH ingress rule on EC2SecurityGroup are
-  # omitted — EIC Endpoint is disabled (Learner Lab IAM constraint). Access EC2
-  # instances via SSM Session Manager instead (DEPLOYMENT.md Step 4.3).
-  #
-  # To re-enable EIC: uncomment EICESecurityGroup here, uncomment EICEndpoint
-  # below, and add the SSH ingress rule back to EC2SecurityGroup.
+          Value: Capstone
 
   EC2SecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -290,36 +302,76 @@ Resources:
           Description: Generator UI - ALB only
       Tags:
         - Key: Name
-          Value: PayAlertEC2SG
+          Value: CapstoneEC2SG
         - Key: Project
-          Value: PayAlert
+          Value: Capstone
 
-  # ── EIC Endpoint ──────────────────────────────────────────────────────────────
-  # Commented out: Learner Lab IAM role lacks ec2-instance-connect:OpenTunnel.
-  # Use SSM Session Manager instead (Step 4.3 in DEPLOYMENT.md).
-  #
-  # EICESecurityGroup:
-  #   Type: AWS::EC2::SecurityGroup
-  #   Properties:
-  #     GroupName: PayAlertEICESG
-  #     GroupDescription: EIC Endpoint - outbound SSH into VPC only
-  #     VpcId: !Ref VPC
-  #     SecurityGroupEgress:
-  #       - IpProtocol: tcp
-  #         FromPort: 22
-  #         ToPort: 22
-  #         CidrIp: 10.0.0.0/16
-  #         Description: SSH from endpoint into VPC
-  #
-  # EICEndpoint:
-  #   Type: AWS::EC2::InstanceConnectEndpoint
-  #   Properties:
-  #     SubnetId: !Ref PrivateSubnet1
-  #     SecurityGroupIds:
-  #       - !Ref EICESecurityGroup
-  #     Tags:
-  #       - Key: Name
-  #         Value: payalert-eice
+  # ── SSM VPC Interface Endpoints ──────────────────────────────────────────────
+  # Allows SSM Session Manager to reach instances in private subnets without
+  # routing through the NAT Gateway, reducing egress cost and latency.
+
+  SSMEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: PayAlertSSMEndpointSG
+      GroupDescription: VPC Interface Endpoints - inbound HTTPS from EC2 instances
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref EC2SecurityGroup
+          Description: HTTPS from EC2 instances to SSM endpoints
+      Tags:
+        - Key: Name
+          Value: PayAlertSSMEndpointSG
+        - Key: Project
+          Value: Capstone
+        - Key: Group
+          Value: '4'
+        - Key: Scenario
+          Value: PayAlert
+        - Key: Environment
+          Value: !Ref Environment
+
+  SSMEndpoint:
+    Type: AWS::EC2::VpcEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssm
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref SSMEndpointSecurityGroup
+
+  SSMMessagesEndpoint:
+    Type: AWS::EC2::VpcEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssmmessages
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref SSMEndpointSecurityGroup
+
+  EC2MessagesEndpoint:
+    Type: AWS::EC2::VpcEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ec2messages
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref SSMEndpointSecurityGroup
 
   # ── EC2: Transaction Generator + Web UI ───────────────────────────────────────
 
@@ -328,7 +380,6 @@ Resources:
     Properties:
       ImageId: !Ref UbuntuAmiId
       InstanceType: t3.micro
-      KeyName: !Ref KeyPairName
       SubnetId: !Ref PrivateSubnet1
       SecurityGroupIds:
         - !Ref EC2SecurityGroup
@@ -339,15 +390,20 @@ Resources:
           set -e
           apt-get update -y
           apt-get upgrade -y
-          apt-get install -y python3 python3-pip python3-venv git
+          apt-get install -y python3 python3-pip python3-venv git snapd
+          snap install amazon-ssm-agent --classic
+          systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
+          systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
           mkdir -p /opt/payalert /opt/payalert-repo
       Tags:
         - Key: Name
-          Value: payalert-ec2
+          Value: payalert-producer-ec2
         - Key: Project
-          Value: PayAlert
+          Value: Capstone
         - Key: Group
-          Value: payalert-group-4
+          Value: '4'
+        - Key: Scenario
+          Value: PayAlert
         - Key: Environment
           Value: !Ref Environment
 
@@ -358,7 +414,6 @@ Resources:
     Properties:
       ImageId: !Ref UbuntuAmiId
       InstanceType: t3.large
-      KeyName: !Ref KeyPairName
       SubnetId: !Ref PrivateSubnet2
       SecurityGroupIds:
         - !Ref EC2SecurityGroup
@@ -369,17 +424,22 @@ Resources:
           set -e
           apt-get update -y
           apt-get upgrade -y
-          apt-get install -y git curl
+          apt-get install -y git curl snapd
+          snap install amazon-ssm-agent --classic
+          systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
+          systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
           curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
           apt-get install -y nodejs
           mkdir -p /opt/payalert /opt/payalert-repo
       Tags:
         - Key: Name
-          Value: payalert-audit-ec2
+          Value: payalert-portal-ec2
         - Key: Project
-          Value: PayAlert
+          Value: Capstone
         - Key: Group
-          Value: payalert-group-4
+          Value: '4'
+        - Key: Scenario
+          Value: PayAlert
         - Key: Environment
           Value: !Ref Environment
 
@@ -403,9 +463,11 @@ Resources:
           Value: 'false'
       Tags:
         - Key: Project
-          Value: PayAlert
+          Value: Capstone
         - Key: Group
-          Value: payalert-group-4
+          Value: '4'
+        - Key: Scenario
+          Value: PayAlert
         - Key: Environment
           Value: !Ref Environment
 
@@ -431,7 +493,13 @@ Resources:
       HealthCheckIntervalSeconds: 30
       Tags:
         - Key: Project
+          Value: Capstone
+        - Key: Group
+          Value: '4'
+        - Key: Scenario
           Value: PayAlert
+        - Key: Environment
+          Value: !Ref Environment
 
   GeneratorTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -441,8 +509,6 @@ Resources:
       Port: 5001
       VpcId: !Ref VPC
       TargetType: instance
-      Targets:
-        - Id: !Ref GeneratorInstance
       HealthCheckProtocol: HTTP
       HealthCheckPath: /health
       HealthyThresholdCount: 2
@@ -450,7 +516,13 @@ Resources:
       HealthCheckIntervalSeconds: 30
       Tags:
         - Key: Project
+          Value: Capstone
+        - Key: Group
+          Value: '4'
+        - Key: Scenario
           Value: PayAlert
+        - Key: Environment
+          Value: !Ref Environment
 
   # ── ALB Listeners ─────────────────────────────────────────────────────────────
 
@@ -513,7 +585,7 @@ Outputs:
       Name: !Sub payalert-private-subnet-1-${Environment}
 
   PrivateSubnet2Id:
-    Description: Private subnet 2 (us-east-1b) — audit portal EC2 + ASG
+    Description: Private subnet 2 (us-east-1b) — portal EC2 + ASG
     Value: !Ref PrivateSubnet2
     Export:
       Name: !Sub payalert-private-subnet-2-${Environment}
@@ -525,17 +597,23 @@ Outputs:
       Name: !Sub payalert-ec2-sg-id-${Environment}
 
   AuditTargetGroupArn:
-    Description: Audit portal target group ARN — used by the ASG
+    Description: Audit portal target group ARN — used by the portal ASG
     Value: !Ref AuditTargetGroup
     Export:
       Name: !Sub payalert-audit-tg-arn-${Environment}
 
-  GeneratorInstanceId:
-    Description: Instance ID for payalert-ec2 — use with SSM Session Manager
+  GeneratorTargetGroupArn:
+    Description: Generator target group ARN — used by the producer ASG
+    Value: !Ref GeneratorTargetGroup
+    Export:
+      Name: !Sub payalert-generator-tg-arn-${Environment}
+
+  ProducerInstanceId:
+    Description: Instance ID for payalert-producer-ec2 — use with SSM Session Manager
     Value: !Ref GeneratorInstance
 
-  AuditInstanceId:
-    Description: Instance ID for payalert-audit-ec2 — use with SSM Session Manager
+  PortalInstanceId:
+    Description: Instance ID for payalert-portal-ec2 — use with SSM Session Manager
     Value: !Ref AuditInstance
 
   AlbDnsName:
@@ -543,3 +621,15 @@ Outputs:
     Value: !GetAtt ALB.DNSName
     Export:
       Name: !Sub payalert-alb-dns-${Environment}
+
+  AlbFullName:
+    Description: ALB LoadBalancerFullName — used by the portal ASG request-count scaling ResourceLabel
+    Value: !GetAtt ALB.LoadBalancerFullName
+    Export:
+      Name: !Sub payalert-alb-full-name-${Environment}
+
+  AuditTargetGroupFullName:
+    Description: Audit portal TargetGroupFullName — used by the portal ASG request-count scaling ResourceLabel
+    Value: !GetAtt AuditTargetGroup.TargetGroupFullName
+    Export:
+      Name: !Sub payalert-audit-tg-full-name-${Environment}

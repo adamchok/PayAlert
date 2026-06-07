@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Full setup for payalert-ec2 (transaction generator + web UI).
+# Full setup for payalert-producer-ec2 (transaction generator + web UI).
 # Automates DEPLOYMENT.md Steps 5.1 – 6.2. Safe to re-run (idempotent).
 #
 # Run on the instance via SSM Session Manager after running `bash`:

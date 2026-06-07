@@ -49,14 +49,13 @@ Replace `YOUR_ACCOUNT_ID` with your 12-digit AWS account ID. Name the policy `pa
 2. **Name:** `payalert-audit-portal`
 3. **AMI:** Ubuntu Server 26.04 LTS (64-bit x86) — search "Ubuntu 26.04" in the AMI catalog; the official Canonical AMI will be listed under **AWS Marketplace** or **Quick Start**
 4. **Instance type:** `t3.small` is sufficient for low traffic; `t3.medium` if you expect multiple concurrent users
-5. **Key pair:** Select an existing key pair or create one — you'll need this to SSH in
+5. **Key pair:** Select **Proceed without a key pair** — access is via SSM Session Manager, no SSH required.
 6. **Network settings:**
    - VPC: your default VPC (or the VPC where DynamoDB is accessible — DynamoDB uses AWS-internal endpoints so any VPC works as long as internet access or a VPC endpoint is available)
    - **Auto-assign public IP:** Enable
    - **Security group:** Create new, named `payalert-audit-portal-sg`
-     - Inbound rule 1: **SSH** (TCP 22) — Source: **My IP** (for admin access)
-     - Inbound rule 2: **HTTP** (TCP 80) — Source: **0.0.0.0/0** (or restrict to your office IP)
-     - Inbound rule 3: **HTTPS** (TCP 443) — Source: **0.0.0.0/0** _(add later if you set up TLS)_
+     - Inbound rule 1: **HTTP** (TCP 80) — Source: **0.0.0.0/0** (or restrict to your office IP)
+     - Inbound rule 2: **HTTPS** (TCP 443) — Source: **0.0.0.0/0** _(add later if you set up TLS)_
 7. **Storage:** 20 GB gp3 (default is fine)
 8. **Advanced details → IAM instance profile:** Select **`payalert-audit-portal-role`**
 9. Click **Launch instance**
@@ -67,13 +66,11 @@ Wait ~1 minute for the instance to reach the `running` state.
 
 ## Step 3 — Connect to the Instance
 
-In the EC2 Console, select your instance → **Connect** → use the browser-based **EC2 Instance Connect**, or SSH from your terminal:
+In the EC2 Console, select your instance → **Connect** → **Session Manager** tab → **Connect**.
 
-```bash
-ssh -i /path/to/your-key.pem ubuntu@<PUBLIC_IP>
-```
+> After the browser shell opens, run `bash` to get a full interactive shell.
 
-> **Note:** Ubuntu instances use `ubuntu` as the default SSH user, not `ec2-user`.
+> If the Session Manager tab is greyed out, wait 1–2 minutes for the SSM agent to register, then refresh the page. The instance profile must include `AmazonSSMManagedInstanceCore` (or the `LabInstanceProfile` in Learner Labs).
 
 ---
 
@@ -101,18 +98,12 @@ sudo npm install -g pm2
 
 ### 5a. Transfer the code
 
-**Option A — Git (recommended):** If your code is in a Git repository:
+**Clone from Git (via the SSM Session Manager shell):**
 
 ```bash
 sudo apt install -y git
 git clone https://github.com/YOUR_ORG/audit-portal-v2.git /home/ubuntu/audit-portal-v2
 cd /home/ubuntu/audit-portal-v2
-```
-
-**Option B — SCP from your machine:** From your local machine:
-
-```bash
-scp -i /path/to/your-key.pem -r ./audit-portal-v2 ubuntu@<PUBLIC_IP>:/home/ubuntu/
 ```
 
 ### 5b. Create the environment file

@@ -7,6 +7,7 @@ import { ChevronRight, Home } from 'lucide-react'
 const SEGMENT_LABELS: Record<string, string> = {
   dashboard: 'Dashboard',
   transactions: 'Transactions',
+  'live-audit': 'Live Audit',
   account: 'Account',
   transaction: 'Transaction',
   dlq: 'Dead Letter Queue',

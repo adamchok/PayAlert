@@ -27,7 +27,7 @@ All AWS infrastructure is defined in a single CloudFormation/SAM template. No CL
 
 | Directory | Description |
 |-----------|-------------|
-| `lambda/` | Transaction processor Lambda + CloudFormation template |
+| `infra/` | Transaction processor Lambda + CloudFormation template |
 | `audit-portal-v2/` | Next.js 16 audit dashboard |
 | `transaction-generator/` | Python synthetic transaction producer |
 | `doc/` | Deployment and local development guides |
@@ -105,8 +105,8 @@ Full step-by-step instructions are in [`doc/`](doc/).
 
 ### Lambda (CloudFormation)
 
-1. Zip `lambda/src/` and upload to S3
-2. Deploy `lambda/template.yaml` via the CloudFormation console
+1. Zip `infra/src/` and upload to S3
+2. Deploy `infra/template.yaml` via the CloudFormation console
 3. Set parameters: `Environment`, `AlertEmail`, `AlertRiskThreshold`, `TransactionTTLDays`
 
 CloudFormation creates: SQS queue + DLQ, DynamoDB table, Lambda function, SNS topic, CloudWatch alarms.

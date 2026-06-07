@@ -1,0 +1,275 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  PayAlert — Auto Scaling Groups for the audit portal and transaction producer.
+  Deploy this stack AFTER the network stack is up AND after building AMIs from
+  payalert-portal-ec2 (portal AMI) and payalert-producer-ec2 (producer AMI).
+
+# ── Parameters ────────────────────────────────────────────────────────────────
+
+Parameters:
+
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Must match the Environment value used in the network stack
+
+  AmiId:
+    Type: AWS::EC2::Image::Id
+    Description: >
+      AMI ID of payalert-portal-ami — created from the configured
+      payalert-portal-ec2 instance (DEPLOYMENT.md Step 9.1).
+
+  ProducerAmiId:
+    Type: AWS::EC2::Image::Id
+    Description: >
+      AMI ID of payalert-producer-ami — created from the configured
+      payalert-producer-ec2 instance (DEPLOYMENT.md Step 9.1).
+
+  InstanceProfileName:
+    Type: String
+    Default: LabInstanceProfile
+    Description: >
+      Name of the IAM instance profile to attach to ASG instances.
+      In AWS Academy Learner Labs this is typically 'LabInstanceProfile'.
+
+# ── Resources ─────────────────────────────────────────────────────────────────
+
+Resources:
+
+  # ── Launch Template ───────────────────────────────────────────────────────────
+
+  PortalLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: payalert-portal-lt
+      LaunchTemplateData:
+        ImageId: !Ref AmiId
+        InstanceType: t3.large
+        SecurityGroupIds:
+          - Fn::ImportValue: !Sub payalert-ec2-sg-id-${Environment}
+        IamInstanceProfile:
+          Name: !Ref InstanceProfileName
+        UserData:
+          Fn::Base64: |
+            #!/bin/bash
+            set -e
+            snap install amazon-ssm-agent --classic
+            systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
+            systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
+        MetadataOptions:
+          HttpTokens: required
+          HttpPutResponseHopLimit: 1
+        BlockDeviceMappings:
+          - DeviceName: /dev/sda1
+            Ebs:
+              VolumeSize: 20
+              VolumeType: gp3
+              Encrypted: true
+              DeleteOnTermination: true
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name
+                Value: payalert-portal-asg-instance
+              - Key: Project
+                Value: Capstone
+              - Key: Group
+                Value: '4'
+              - Key: Scenario
+                Value: PayAlert
+              - Key: Environment
+                Value: !Ref Environment
+
+  # ── Auto Scaling Group ────────────────────────────────────────────────────────
+
+  PortalASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: payalert-portal-asg
+      LaunchTemplate:
+        LaunchTemplateId: !Ref PortalLaunchTemplate
+        Version: !GetAtt PortalLaunchTemplate.LatestVersionNumber
+      MinSize: 1
+      MaxSize: 2
+      DesiredCapacity: 1
+      VPCZoneIdentifier:
+        - Fn::ImportValue: !Sub payalert-private-subnet-1-${Environment}
+        - Fn::ImportValue: !Sub payalert-private-subnet-2-${Environment}
+      TargetGroupARNs:
+        - Fn::ImportValue: !Sub payalert-audit-tg-arn-${Environment}
+      HealthCheckType: ELB
+      HealthCheckGracePeriod: 300
+      Tags:
+        - Key: Project
+          Value: Capstone
+          PropagateAtLaunch: true
+        - Key: Group
+          Value: '4'
+          PropagateAtLaunch: true
+        - Key: Scenario
+          Value: PayAlert
+          PropagateAtLaunch: true
+        - Key: Environment
+          Value: !Ref Environment
+          PropagateAtLaunch: true
+
+  # ── Producer: Launch Template ─────────────────────────────────────────────────
+
+  ProducerLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: payalert-producer-lt
+      LaunchTemplateData:
+        ImageId: !Ref ProducerAmiId
+        InstanceType: t3.micro
+        SecurityGroupIds:
+          - Fn::ImportValue: !Sub payalert-ec2-sg-id-${Environment}
+        IamInstanceProfile:
+          Name: !Ref InstanceProfileName
+        MetadataOptions:
+          HttpTokens: required
+          HttpPutResponseHopLimit: 1
+        BlockDeviceMappings:
+          - DeviceName: /dev/sda1
+            Ebs:
+              VolumeSize: 20
+              VolumeType: gp3
+              Encrypted: true
+              DeleteOnTermination: true
+        UserData:
+          Fn::Base64: |
+            #!/bin/bash
+            set -e
+            snap install amazon-ssm-agent --classic
+            systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
+            systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name
+                Value: payalert-producer-asg-instance
+              - Key: Project
+                Value: Capstone
+              - Key: Group
+                Value: '4'
+              - Key: Scenario
+                Value: PayAlert
+              - Key: Environment
+                Value: !Ref Environment
+
+  # ── Producer: Auto Scaling Group ──────────────────────────────────────────────
+  # NOTE: On initial deploy there is a ~90-second gap (instance boot + SSM agent
+  # + systemd service start) before the producer generates transactions. This is
+  # expected for a min:1/max:1 ASG without a CreationPolicy completion signal.
+
+  ProducerASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: payalert-producer-asg
+      LaunchTemplate:
+        LaunchTemplateId: !Ref ProducerLaunchTemplate
+        Version: !GetAtt ProducerLaunchTemplate.LatestVersionNumber
+      MinSize: 1
+      MaxSize: 1
+      DesiredCapacity: 1
+      VPCZoneIdentifier:
+        - Fn::ImportValue: !Sub payalert-private-subnet-1-${Environment}
+        - Fn::ImportValue: !Sub payalert-private-subnet-2-${Environment}
+      TargetGroupARNs:
+        - Fn::ImportValue: !Sub payalert-generator-tg-arn-${Environment}
+      HealthCheckType: ELB
+      HealthCheckGracePeriod: 300
+      Tags:
+        - Key: Project
+          Value: Capstone
+          PropagateAtLaunch: true
+        - Key: Group
+          Value: '4'
+          PropagateAtLaunch: true
+        - Key: Scenario
+          Value: PayAlert
+          PropagateAtLaunch: true
+        - Key: Environment
+          Value: !Ref Environment
+          PropagateAtLaunch: true
+
+  # ── Scaling Policy: ALB Request Count Target Tracking ────────────────────────
+  # The audit portal is I/O-bound (Next.js server-renders pages backed by
+  # DynamoDB queries). CPU is a poor proxy for user load because the process
+  # spends most time waiting on DynamoDB, not computing. ALB request count per
+  # target is the direct signal: each analyst triggers ~12 req/min from the
+  # Live Audit 5-second poll plus ~5–10 req/min from page navigation.
+  #
+  # Assumption: up to 10 concurrent analysts × ~20 req/min each = ~200 req/min
+  # peak on 1 instance. Target value of 100 req/min/target gives ~50% headroom
+  # before scale-out triggers. Scale-out adds a second instance, halving the
+  # per-target load to ~50 req/min (below threshold → scale stabilises).
+  #
+  # EstimatedInstanceWarmup: 120s — matches the pre-baked AMI boot time (~90s
+  # for snap SSM agent + systemd service to reach healthy state). Shorter than
+  # the default 300s, appropriate for request-count spikes that settle quickly.
+  #
+  # CPU alarm (payalert-portal-cpu-high below) is kept as an observational
+  # alarm only — it notifies via SNS but does NOT drive scaling.
+
+  PortalRequestCountTrackingPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref PortalASG
+      PolicyName: payalert-portal-request-count-tracking
+      PolicyType: TargetTrackingScaling
+      TargetTrackingConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ALBRequestCountPerTarget
+          ResourceLabel: !Join
+            - '/'
+            - - Fn::ImportValue: !Sub payalert-alb-full-name-${Environment}
+              - Fn::ImportValue: !Sub payalert-audit-tg-full-name-${Environment}
+        TargetValue: 100.0
+        EstimatedInstanceWarmup: 120
+
+  # Observational-only CPU alarm — does NOT trigger scaling.
+  # Retained for anomaly detection: a CPU spike with low request count
+  # suggests a runaway process or misconfiguration worth investigating.
+  PortalCpuHighAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub payalert-portal-cpu-high-${Environment}
+      AlarmDescription: >
+        Portal EC2 CPU > 80% for 5 minutes. Observational only — scaling is
+        driven by ALB request count, not CPU. Investigate if this fires with
+        low traffic (may indicate a runaway process or memory pressure).
+      Namespace: AWS/EC2
+      MetricName: CPUUtilization
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref PortalASG
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - Fn::ImportValue: !Sub payalert-alert-topic-arn-${Environment}
+
+# ── Outputs ───────────────────────────────────────────────────────────────────
+
+Outputs:
+
+  PortalASGName:
+    Description: Auto Scaling Group name for the audit portal
+    Value: !Ref PortalASG
+
+  PortalLaunchTemplateId:
+    Description: Portal Launch Template ID — update when you create a new portal AMI
+    Value: !Ref PortalLaunchTemplate
+
+  ProducerASGName:
+    Description: Auto Scaling Group name for the transaction generator (producer)
+    Value: !Ref ProducerASG
+
+  ProducerLaunchTemplateId:
+    Description: Producer Launch Template ID — update when you create a new producer AMI
+    Value: !Ref ProducerLaunchTemplate

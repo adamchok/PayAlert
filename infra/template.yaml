@@ -77,9 +77,11 @@ Resources:
       SqsManagedSseEnabled: true
       Tags:
         - Key: Project
-          Value: PayAlert
+          Value: Capstone
         - Key: Group
-          Value: payalert-group-4
+          Value: '4'
+        - Key: Scenario
+          Value: PayAlert
         - Key: Environment
           Value: !Ref Environment
 
@@ -100,9 +102,11 @@ Resources:
         maxReceiveCount: 3              # 3 delivery attempts before DLQ
       Tags:
         - Key: Project
-          Value: PayAlert
+          Value: Capstone
         - Key: Group
-          Value: payalert-group-4
+          Value: '4'
+        - Key: Scenario
+          Value: PayAlert
         - Key: Environment
           Value: !Ref Environment
 
@@ -169,9 +173,11 @@ Resources:
             ProjectionType: ALL
       Tags:
         - Key: Project
-          Value: PayAlert
+          Value: Capstone
         - Key: Group
-          Value: payalert-group-4
+          Value: '4'
+        - Key: Scenario
+          Value: PayAlert
         - Key: Environment
           Value: !Ref Environment
 
@@ -216,6 +222,15 @@ Resources:
               - kms:Decrypt
               - kms:GenerateDataKey*
             Resource: '*'
+      Tags:
+        - Key: Project
+          Value: Capstone
+        - Key: Group
+          Value: '4'
+        - Key: Scenario
+          Value: PayAlert
+        - Key: Environment
+          Value: !Ref Environment
 
   # ── SNS Alert Topic ──────────────────────────────────────────────────────────
 
@@ -226,9 +241,11 @@ Resources:
       KmsMasterKeyId: !GetAtt PayAlertKmsKey.Arn
       Tags:
         - Key: Project
-          Value: PayAlert
+          Value: Capstone
         - Key: Group
-          Value: payalert-group-4
+          Value: '4'
+        - Key: Scenario
+          Value: PayAlert
         - Key: Environment
           Value: !Ref Environment
 
@@ -271,8 +288,9 @@ Resources:
             ScalingConfig:
               MaximumConcurrency: 10
       Tags:
-        Project: PayAlert
-        Group: payalert-group-4
+        Project: Capstone
+        Group: '4'
+        Scenario: PayAlert
         Environment: !Ref Environment
 
   TransactionProcessorLogGroup:
@@ -285,9 +303,11 @@ Resources:
       RetentionInDays: 30
       Tags:
         - Key: Project
-          Value: PayAlert
+          Value: Capstone
         - Key: Group
-          Value: payalert-group-4
+          Value: '4'
+        - Key: Scenario
+          Value: PayAlert
         - Key: Environment
           Value: !Ref Environment
 
@@ -315,9 +335,11 @@ Resources:
       TreatMissingData: notBreaching
       Tags:
         - Key: Project
-          Value: PayAlert
+          Value: Capstone
         - Key: Group
-          Value: payalert-group-4
+          Value: '4'
+        - Key: Scenario
+          Value: PayAlert
         - Key: Environment
           Value: !Ref Environment
 
@@ -341,9 +363,11 @@ Resources:
       TreatMissingData: notBreaching
       Tags:
         - Key: Project
-          Value: PayAlert
+          Value: Capstone
         - Key: Group
-          Value: payalert-group-4
+          Value: '4'
+        - Key: Scenario
+          Value: PayAlert
         - Key: Environment
           Value: !Ref Environment
 
@@ -367,9 +391,11 @@ Resources:
       TreatMissingData: notBreaching
       Tags:
         - Key: Project
-          Value: PayAlert
+          Value: Capstone
         - Key: Group
-          Value: payalert-group-4
+          Value: '4'
+        - Key: Scenario
+          Value: PayAlert
         - Key: Environment
           Value: !Ref Environment
 

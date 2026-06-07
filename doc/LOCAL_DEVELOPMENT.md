@@ -80,7 +80,7 @@ The Lambda tests use [moto](https://docs.getmoto.org/) to mock DynamoDB and SNS 
 ### 2.1 Install test dependencies
 
 ```bash
-cd lambda/
+cd infra/
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r tests/requirements-test.txt
@@ -131,7 +131,7 @@ The Lambda handler is a plain Python function. You can invoke it directly from a
 ### 3.1 Install handler dependencies
 
 ```bash
-cd lambda/
+cd infra/
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r transaction-processor/requirements.txt
@@ -140,7 +140,7 @@ pip install -r tests/requirements-test.txt  # only needed if also running unit t
 
 ### 3.2 Create a sample SQS event file
 
-Save this as `lambda/tests/sample_event.json`:
+Save this as `infra/tests/sample_event.json`:
 
 ```json
 {
@@ -165,7 +165,7 @@ Save this as `lambda/tests/sample_event.json`:
 The `invoke_local.py` helper reads AWS credentials from the standard boto3 credential chain (environment variables, `~/.aws/credentials`, or EC2 instance profile). To point it at real AWS DynamoDB instead of DynamoDB Local, unset `AWS_ENDPOINT_URL_DYNAMODB`:
 
 ```bash
-cd lambda/
+cd infra/
 source .venv/bin/activate
 
 DYNAMODB_TABLE=payalert-transactions-dev \
@@ -268,7 +268,7 @@ Leave this terminal open. The `-inMemory` flag means all data is lost when the c
 In a new terminal, run the setup script once per session:
 
 ```bash
-cd lambda/
+cd infra/
 source .venv/bin/activate   # activate venv from Section 3.1
 python3 tests/setup_local_table.py
 ```
@@ -281,11 +281,11 @@ Table created: payalert-transactions-dev
 
 Running it a second time prints `Table already exists — skipping creation.`
 
-The script (`lambda/tests/setup_local_table.py`) uses boto3 to create the table with all three GSIs directly against the local endpoint.
+The script (`infra/tests/setup_local_table.py`) uses boto3 to create the table with all three GSIs directly against the local endpoint.
 
 ### 5.3 Create the local Lambda env vars file
 
-Save this as `lambda/tests/local-env-local.json` (used as documentation reference — `invoke_local.py` sets these values automatically):
+Save this as `infra/tests/local-env-local.json` (used as documentation reference — `invoke_local.py` sets these values automatically):
 
 ```json
 {
@@ -303,7 +303,7 @@ Save this as `lambda/tests/local-env-local.json` (used as documentation referenc
 
 ### 5.4 Create a sample event file
 
-Save this as `lambda/tests/local-batch-event.json`. It contains five transactions covering all four risk levels, all dated today.
+Save this as `infra/tests/local-batch-event.json`. It contains five transactions covering all four risk levels, all dated today.
 
 > Update the `timestamp` dates if you are running this on a different day.
 
@@ -339,7 +339,7 @@ Save this as `lambda/tests/local-batch-event.json`. It contains five transaction
 This sends all five transactions through the real Lambda code and writes them to DynamoDB Local. No Docker container is needed for the Lambda itself.
 
 ```bash
-cd lambda/
+cd infra/
 source .venv/bin/activate
 python3 tests/invoke_local.py tests/local-batch-event.json
 ```
@@ -419,7 +419,7 @@ print(json.dumps(event))
 " > /tmp/gen-event.json
 
 # Invoke the handler
-cd ../lambda/
+cd ../infra/
 source .venv/bin/activate
 python3 tests/invoke_local.py /tmp/gen-event.json
 ```
@@ -443,7 +443,7 @@ docker run --rm --name dynamodb-local \
 
 **Terminal 2 — Create table + load data:**
 ```bash
-cd lambda/
+cd infra/
 source .venv/bin/activate
 
 # Create table (run once per DynamoDB Local session)
@@ -479,11 +479,11 @@ Open `http://localhost:5000`.
 
 | File | Purpose |
 |---|---|
-| `lambda/tests/setup_local_table.py` | Create DynamoDB Local table with all 3 GSIs (run once per session) |
-| `lambda/tests/invoke_local.py` | Invoke the Lambda handler directly against DynamoDB Local |
-| `lambda/tests/verify_local.py` | Print a summary of all items in the local table |
-| `lambda/tests/local-batch-event.json` | 5-transaction SQS event (all four risk levels) |
-| `lambda/tests/sample_event.json` | Single-transaction SQS event |
+| `infra/tests/setup_local_table.py` | Create DynamoDB Local table with all 3 GSIs (run once per session) |
+| `infra/tests/invoke_local.py` | Invoke the Lambda handler directly against DynamoDB Local |
+| `infra/tests/verify_local.py` | Print a summary of all items in the local table |
+| `infra/tests/local-batch-event.json` | 5-transaction SQS event (all four risk levels) |
+| `infra/tests/sample_event.json` | Single-transaction SQS event |
 
 ---
 
@@ -496,5 +496,5 @@ Open `http://localhost:5000`.
 | `ResourceNotFoundException` on invoke | Table not created yet | Run `python3 tests/setup_local_table.py` |
 | Portal shows blank dashboard | Table empty or wrong date | Run `invoke_local.py`, check today's date matches timestamps in event file |
 | `Error: No module named 'flask'` | venv not activated | `source .venv/bin/activate` inside `audit-portal/` |
-| `Error: No module named 'boto3'` in invoke_local.py | lambda venv not activated | `source .venv/bin/activate` inside `lambda/` |
+| `Error: No module named 'boto3'` in invoke_local.py | lambda venv not activated | `source .venv/bin/activate` inside `infra/` |
 | `python3-venv` not found | Ubuntu missing venv package | `sudo apt install python3-venv` |

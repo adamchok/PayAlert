@@ -9,12 +9,12 @@ This guide covers two ways to run the Lambda handler locally without deploying t
 
 ## Unit Tests
 
-Tests live in `lambda/tests/` and use [moto](https://github.com/getmoto/moto) to mock DynamoDB, SQS, and SNS. No AWS credentials or network access required.
+Tests live in `infra/tests/` and use [moto](https://github.com/getmoto/moto) to mock DynamoDB, SQS, and SNS. No AWS credentials or network access required.
 
 ### Setup
 
 ```bash
-cd lambda/tests
+cd infra/tests
 
 python3 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate

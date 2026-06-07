@@ -33,7 +33,7 @@ Steps where the command differs between shells show both variants explicitly.
 
 ## 1. Build
 
-From the `lambda/` directory:
+From the `infra/` directory:
 
 ```bash
 sam build

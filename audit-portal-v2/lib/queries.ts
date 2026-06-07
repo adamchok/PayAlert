@@ -105,6 +105,35 @@ export async function getTransaction(txId: string): Promise<Transaction | null> 
   return (result.Item as Transaction) ?? null
 }
 
+export async function queryRecentTransactions(limit: number = 20): Promise<Transaction[]> {
+  const todayDate = todayMYT()
+  const datePartitions = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(todayDate + 'T00:00:00Z')
+    d.setUTCDate(d.getUTCDate() - i)
+    return d.toISOString().slice(0, 10)
+  })
+
+  const responses = await Promise.all(
+    datePartitions.map(dateStr =>
+      docClient.send(
+        new QueryCommand({
+          TableName: TABLE_NAME,
+          IndexName: 'DatePartitionIndex',
+          KeyConditionExpression: 'datePartition = :dp',
+          ExpressionAttributeValues: { ':dp': dateStr },
+          ScanIndexForward: false,
+          Limit: limit,
+        })
+      )
+    )
+  )
+
+  return responses
+    .flatMap(resp => (resp.Items ?? []) as Transaction[])
+    .sort((a, b) => (b.timestamp > a.timestamp ? 1 : b.timestamp < a.timestamp ? -1 : 0))
+    .slice(0, limit)
+}
+
 export async function queryLastNDays(n: number): Promise<{ date: string; count: number }[]> {
   const today = todayMYT()
   const dates = Array.from({ length: n }, (_, i) => {

@@ -67,7 +67,7 @@ EC2 Producer
 ## Directory Structure
 
 ```
-lambda/
+infra/
 ├── README.md                        # This file
 ├── template.yaml                    # CloudFormation / SAM transform template
 ├── .gitignore
@@ -180,12 +180,12 @@ The Lambda deployment package must be stored in S3 before CloudFormation can ref
 
 The Lambda handler (`handler.py`) uses only `boto3`, which is pre-installed in the Lambda runtime. The deployment package is a single zip containing the handler file.
 
-Run the following from the `lambda/transaction-processor/` directory on your workstation:
+Run the following from the `infra/transaction-processor/` directory on your workstation:
 
 **macOS / Linux**
 
 ```bash
-cd lambda/transaction-processor/
+cd infra/transaction-processor/
 zip function.zip handler.py
 ```
 
@@ -196,7 +196,7 @@ cd lambda\transaction-processor\
 Compress-Archive -Path handler.py -DestinationPath function.zip
 ```
 
-Result: `lambda/transaction-processor/function.zip`
+Result: `infra/transaction-processor/function.zip`
 
 ---
 
@@ -216,7 +216,7 @@ s3://payalert-artifacts-{account-id}/function.zip
 
 ### Step 4 — Update the CloudFormation template
 
-Open `lambda/template.yaml` in a text editor and replace the `CodeUri` line under `TransactionProcessorFunction`:
+Open `infra/template.yaml` in a text editor and replace the `CodeUri` line under `TransactionProcessorFunction`:
 
 ```yaml
 # Before (SAM local path — not valid for console deployment)
@@ -234,7 +234,7 @@ Save the file.
 
 1. Open the **[CloudFormation Console](https://ap-southeast-1.console.aws.amazon.com/cloudformation/home?region=ap-southeast-1)**.
 2. Click **Create stack** → **With new resources (standard)**.
-3. Under **Template source**, select **Upload a template file** → **Choose file** → select the modified `lambda/template.yaml` → **Next**.
+3. Under **Template source**, select **Upload a template file** → **Choose file** → select the modified `infra/template.yaml` → **Next**.
 4. Fill in the stack details:
    - **Stack name**: `payalert-dev`
 5. Fill in the parameters:
@@ -308,7 +308,7 @@ Each environment creates an independent set of resources with the environment su
 ### Install test dependencies
 
 ```bash
-cd lambda/
+cd infra/
 pip install -r tests/requirements-test.txt
 ```
 
@@ -441,7 +441,7 @@ The item should appear with `processedAt`, `datePartition`, and `ttl` fields add
 
 ### Invoke the Lambda directly with a test event
 
-1. Open the **[Lambda Console](https://ap-southeast-1.console.aws.amazon.com/lambda/home?region=ap-southeast-1#/functions)**.
+1. Open the **[Lambda Console](https://ap-southeast-1.console.aws.amazon.com/infra/home?region=ap-southeast-1#/functions)**.
 2. Click `payalert-transaction-processor-dev` → **Test** tab.
 3. Create a new test event named `SQSTestEvent` with the following payload:
 

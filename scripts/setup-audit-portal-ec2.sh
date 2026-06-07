@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Full setup for payalert-audit-ec2 (Next.js audit portal).
+# Full setup for payalert-portal-ec2 (Next.js audit portal).
 # Automates DEPLOYMENT.md Steps 7.3 – 7.9. Safe to re-run (idempotent).
 #
 # Run on the instance via SSM Session Manager after running `bash`:

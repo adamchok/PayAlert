@@ -6,3 +6,9 @@
 
 # MCP
 .mcp.json
+
+# Docs
+*.docx
+
+# Ruff
+.ruff_cache/
