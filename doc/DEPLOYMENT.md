@@ -387,7 +387,8 @@ Type `yes` when prompted. You will see `Hi <username>! You've successfully authe
 Replace the values below with your own, then run:
 
 ```bash
-SQS_QUEUE_URL=https://sqs.us-east-1.amazonaws.com/ACCOUNT_ID/payalert-transactions-queue-dev \
+ACCOUNT_ID=123456789012 \
+ENVIRONMENT=dev \
 UI_USERNAME=payalert \
 UI_PASSWORD=YourStrongPassword \
 GITHUB_USERNAME=your-github-username \
@@ -397,7 +398,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/<your-username>/PayAlert/mas
 Or, if you have already cloned the repo manually:
 
 ```bash
-SQS_QUEUE_URL=https://sqs.us-east-1.amazonaws.com/ACCOUNT_ID/payalert-transactions-queue-dev \
+ACCOUNT_ID=123456789012 \
+ENVIRONMENT=dev \
 UI_USERNAME=payalert \
 UI_PASSWORD=YourStrongPassword \
 GITHUB_USERNAME=your-github-username \
@@ -405,14 +407,14 @@ bash /opt/payalert-repo/scripts/setup-generator-ec2.sh
 ```
 
 The script:
-1. Verifies/installs python3, venv, git
+1. Verifies/installs python3, python3-full (required on Ubuntu 26.04), git
 2. Clones the repo to `/opt/payalert-repo`
 3. Deploys `transaction-generator` to `/opt/payalert/transaction-generator`
 4. Creates the Python virtualenv and installs dependencies
 5. Writes `/opt/payalert/generator.env`
 6. Installs and starts the `payalert-portal` systemd service
 
-`SQS_QUEUE_URL` is `TransactionQueueUrl` from the Step 1.6 CloudFormation outputs. Add `FORCE_ENV=1` to overwrite an existing `generator.env`. `AWS_REGION` defaults to `us-east-1` — set it if deploying to a different region.
+`ACCOUNT_ID` is your 12-digit AWS account ID. `ENVIRONMENT` controls the SQS queue name suffix (default: `dev`) — set to `staging` or `prod` to match your deployment. Add `FORCE_ENV=1` to overwrite an existing `generator.env`. `AWS_REGION` defaults to `us-east-1`. To override the constructed SQS URL entirely, pass `SQS_QUEUE_URL` explicitly.
 
 ### 5.3 Verify the service and run a quick test
 
@@ -483,6 +485,7 @@ ACCOUNT_ID=123456789012 \
 PORTAL_USERNAME=admin \
 PORTAL_PASSWORD=YourStrongPassword \
 DYNAMODB_TABLE=payalert-transactions-dev \
+ENVIRONMENT=dev \
 GITHUB_USERNAME=your-github-username \
 bash <(curl -fsSL https://raw.githubusercontent.com/<your-username>/PayAlert/master/scripts/setup-audit-portal-ec2.sh)
 ```
@@ -494,6 +497,7 @@ ACCOUNT_ID=123456789012 \
 PORTAL_USERNAME=admin \
 PORTAL_PASSWORD=YourStrongPassword \
 DYNAMODB_TABLE=payalert-transactions-dev \
+ENVIRONMENT=dev \
 GITHUB_USERNAME=your-github-username \
 bash /opt/payalert-repo/scripts/setup-audit-portal-ec2.sh
 ```
@@ -506,7 +510,7 @@ The script:
 5. Runs `npm ci && npm run build` (1–5 minutes)
 6. Installs and starts the `payalert-audit-portal` systemd service
 
-`ACCOUNT_ID` is your 12-digit AWS account ID. Add `FORCE_ENV=1` to overwrite an existing `.env.local`. `AWS_REGION` defaults to `us-east-1`.
+`ACCOUNT_ID` is your 12-digit AWS account ID. `ENVIRONMENT` controls the SQS/DLQ queue name suffix (default: `dev`) — set to `staging` or `prod` to match your deployment. Add `FORCE_ENV=1` to overwrite an existing `.env.local`. `AWS_REGION` defaults to `us-east-1`.
 
 > **ASG note:** If you plan to use multiple instances behind the ASG, generate `AUTH_SECRET` once with `openssl rand -base64 32` and pass the same value to all instances so sessions stay valid across targets.
 

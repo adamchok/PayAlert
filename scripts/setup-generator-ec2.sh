@@ -4,18 +4,22 @@
 #
 # Run on the instance via SSM Session Manager after running `bash`:
 #
-#   SQS_QUEUE_URL=https://sqs.us-east-1.amazonaws.com/ACCOUNT_ID/payalert-transactions-queue-dev \
+#   ACCOUNT_ID=123456789012 \
+#   ENVIRONMENT=dev \
+#   UI_USERNAME=payalert \
 #   UI_PASSWORD=YourStrongPassword \
 #   GITHUB_USERNAME=your-github-username \
 #   bash /opt/payalert-repo/scripts/setup-generator-ec2.sh
 #
 # Required env vars:
-#   SQS_QUEUE_URL    TransactionQueueUrl from payalert-stack CloudFormation outputs
+#   ACCOUNT_ID       Your 12-digit AWS account ID
 #   UI_USERNAME      Username for the generator web UI login
 #   UI_PASSWORD      Password for the generator web UI login
 #   GITHUB_USERNAME  GitHub username (SSH key must already be added to GitHub)
 #
 # Optional env vars:
+#   ENVIRONMENT      Deployment environment suffix for SQS queue name (default: dev)
+#   SQS_QUEUE_URL    Override the auto-constructed SQS URL (takes precedence over ACCOUNT_ID + ENVIRONMENT)
 #   AWS_REGION       AWS region (default: us-east-1)
 #   FORCE_ENV        Set to 1 to overwrite an existing generator.env
 
@@ -27,12 +31,18 @@ warn()  { echo -e "${YELLOW}[$(date +%H:%M:%S)] WARNING: ${*}${NC}"; }
 error() { echo -e "${RED}[$(date +%H:%M:%S)] ERROR: ${*}${NC}" >&2; exit 1; }
 
 # ── Validate required vars ───────────────────────────────────────────────────
-[[ -n "${SQS_QUEUE_URL:-}" ]]   || error "SQS_QUEUE_URL is required"
 [[ -n "${UI_USERNAME:-}" ]]     || error "UI_USERNAME is required"
 [[ -n "${UI_PASSWORD:-}" ]]     || error "UI_PASSWORD is required"
 [[ -n "${GITHUB_USERNAME:-}" ]] || error "GITHUB_USERNAME is required"
 AWS_REGION="${AWS_REGION:-us-east-1}"
+ENVIRONMENT="${ENVIRONMENT:-dev}"
 FORCE_ENV="${FORCE_ENV:-0}"
+
+# Construct SQS URL from ACCOUNT_ID + ENVIRONMENT if not explicitly provided
+if [[ -z "${SQS_QUEUE_URL:-}" ]]; then
+    [[ -n "${ACCOUNT_ID:-}" ]] || error "ACCOUNT_ID is required when SQS_QUEUE_URL is not set"
+    SQS_QUEUE_URL="https://sqs.${AWS_REGION}.amazonaws.com/${ACCOUNT_ID}/payalert-transactions-queue-${ENVIRONMENT}"
+fi
 REPO_DIR=/opt/payalert-repo
 APP_DIR=/opt/payalert/transaction-generator
 ENV_FILE=/opt/payalert/generator.env
@@ -61,7 +71,7 @@ info "  python3: $(python3 --version) | git: $(git --version | cut -d' ' -f3)"
 
 # ── 2. Directory ownership ───────────────────────────────────────────────────
 sudo mkdir -p "$REPO_DIR" /opt/payalert
-sudo chown "${CURRENT_USER}:${CURRENT_USER}" "$REPO_DIR" /opt/payalert
+sudo chown -R "${CURRENT_USER}:${CURRENT_USER}" "$REPO_DIR" /opt/payalert
 
 # ── 3. Clone or update repository ───────────────────────────────────────────
 info "Step 2/6: Syncing repository..."
