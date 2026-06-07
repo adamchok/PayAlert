@@ -335,7 +335,7 @@ Resources:
           Value: !Ref Environment
 
   SSMEndpoint:
-    Type: AWS::EC2::VpcEndpoint
+    Type: AWS::EC2::VPCEndpoint
     Properties:
       VpcId: !Ref VPC
       ServiceName: !Sub com.amazonaws.${AWS::Region}.ssm
@@ -348,7 +348,7 @@ Resources:
         - !Ref SSMEndpointSecurityGroup
 
   SSMMessagesEndpoint:
-    Type: AWS::EC2::VpcEndpoint
+    Type: AWS::EC2::VPCEndpoint
     Properties:
       VpcId: !Ref VPC
       ServiceName: !Sub com.amazonaws.${AWS::Region}.ssmmessages
@@ -361,7 +361,7 @@ Resources:
         - !Ref SSMEndpointSecurityGroup
 
   EC2MessagesEndpoint:
-    Type: AWS::EC2::VpcEndpoint
+    Type: AWS::EC2::VPCEndpoint
     Properties:
       VpcId: !Ref VPC
       ServiceName: !Sub com.amazonaws.${AWS::Region}.ec2messages
