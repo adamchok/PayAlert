@@ -387,13 +387,10 @@ Resources:
       UserData:
         Fn::Base64: |
           #!/bin/bash
-          set -e
+          systemctl enable amazon-ssm-agent
+          systemctl start amazon-ssm-agent
           apt-get update -y
-          apt-get upgrade -y
-          apt-get install -y python3 python3-pip python3-venv git snapd
-          snap install amazon-ssm-agent --classic
-          systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
-          systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
+          apt-get install -y python3 python3-pip python3-venv git
           mkdir -p /opt/payalert /opt/payalert-repo
       Tags:
         - Key: Name
@@ -421,13 +418,10 @@ Resources:
       UserData:
         Fn::Base64: |
           #!/bin/bash
-          set -e
+          systemctl enable amazon-ssm-agent
+          systemctl start amazon-ssm-agent
           apt-get update -y
-          apt-get upgrade -y
-          apt-get install -y git curl snapd
-          snap install amazon-ssm-agent --classic
-          systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
-          systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
+          apt-get install -y git curl
           curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
           apt-get install -y nodejs
           mkdir -p /opt/payalert /opt/payalert-repo
