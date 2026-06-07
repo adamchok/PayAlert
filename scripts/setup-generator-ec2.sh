@@ -48,7 +48,8 @@ info "Step 1/6: Checking system packages..."
 MISSING=""
 command -v python3 &>/dev/null || MISSING="${MISSING} python3"
 command -v git     &>/dev/null || MISSING="${MISSING} git"
-python3 -m venv --help &>/dev/null 2>&1 || MISSING="${MISSING} python3-venv"
+# python3 -m venv --help exits 0 even without ensurepip — check directly
+python3 -c "import ensurepip" &>/dev/null 2>&1 || MISSING="${MISSING} python3-venv"
 
 if [[ -n "$MISSING" ]]; then
     warn "Installing:${MISSING}"
