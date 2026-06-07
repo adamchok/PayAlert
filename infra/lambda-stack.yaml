@@ -42,6 +42,12 @@ Parameters:
       ARN of the existing IAM role to attach to the Lambda function.
       In AWS Academy Learner Labs use: arn:aws:iam::<account-id>:role/LabRole
 
+  LambdaArtifactBucket:
+    Type: String
+    Description: >
+      S3 bucket name containing the Lambda deployment zip (function.zip).
+      Format: payalert-artifacts-{your-12-digit-account-id}
+
   EnableForceFail:
     Type: String
     Default: 'false'
@@ -262,7 +268,9 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub payalert-transaction-processor-${Environment}
-      CodeUri: transaction-processor/
+      CodeUri:
+        Bucket: !Ref LambdaArtifactBucket
+        Key: function.zip
       Handler: handler.lambda_handler
       Description: >
         Reads transaction batches from SQS, writes to DynamoDB, and publishes

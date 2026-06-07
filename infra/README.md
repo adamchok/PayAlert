@@ -69,7 +69,7 @@ EC2 Producer
 ```
 infra/
 ├── README.md                        # This file
-├── template.yaml                    # CloudFormation / SAM transform template
+├── lambda-stack.yaml                # CloudFormation / SAM transform template
 ├── .gitignore
 ├── transaction-processor/
 │   ├── handler.py                   # Lambda entry point
@@ -216,7 +216,7 @@ s3://payalert-artifacts-{account-id}/function.zip
 
 ### Step 4 — Update the CloudFormation template
 
-Open `infra/template.yaml` in a text editor and replace the `CodeUri` line under `TransactionProcessorFunction`:
+Open `infra/lambda-stack.yaml` in a text editor and replace the `CodeUri` line under `TransactionProcessorFunction`:
 
 ```yaml
 # Before (SAM local path — not valid for console deployment)
@@ -234,7 +234,7 @@ Save the file.
 
 1. Open the **[CloudFormation Console](https://ap-southeast-1.console.aws.amazon.com/cloudformation/home?region=ap-southeast-1)**.
 2. Click **Create stack** → **With new resources (standard)**.
-3. Under **Template source**, select **Upload a template file** → **Choose file** → select the modified `infra/template.yaml` → **Next**.
+3. Under **Template source**, select **Upload a template file** → **Choose file** → select `infra/lambda-stack.yaml` → **Next**.
 4. Fill in the stack details:
    - **Stack name**: `payalert-dev`
 5. Fill in the parameters:
@@ -578,7 +578,7 @@ After any code change:
 After any template change (adding/removing resources or parameters):
 
 1. Console: **CloudFormation** → `payalert-dev` → **Update**.
-2. Choose **Replace current template** → upload the modified `template.yaml`.
+2. Choose **Replace current template** → upload `infra/lambda-stack.yaml`.
 3. Review the changeset and confirm.
 
 ---

@@ -79,7 +79,7 @@ The infrastructure is split across three CloudFormation templates in `infra/`:
 
 | Template | Stack name | Deploys | When |
 |---|---|---|---|
-| `template.yaml` | `payalert-stack` | Lambda, SQS, DynamoDB, SNS, CloudWatch alarms | Step 1 |
+| `lambda-stack.yaml` | `payalert-stack` | Lambda, SQS, DynamoDB, SNS, CloudWatch alarms | Step 1 |
 | `network-stack.yaml` | `payalert-network-stack` | VPC, subnets, NAT, SSM endpoints, security groups, EC2 instances, ALB, target groups | Step 3 |
 | `asg-stack.yaml` | `payalert-asg-stack` | Launch Templates, ASGs (portal + producer), scaling policy | Step 9 (after AMIs are built) |
 
@@ -143,25 +143,11 @@ Compress-Archive -Path handler.py -DestinationPath function.zip
 1. Open the **[S3 Console](https://s3.console.aws.amazon.com/s3/buckets)** → click `payalert-artifacts-{account-id}`.
 2. **Upload** → **Add files** → select `function.zip` → **Upload**.
 
-### 1.4 Update the CloudFormation template
-
-Open `infra/template.yaml` and replace the `CodeUri` line under `TransactionProcessorFunction`:
-
-```yaml
-# Before
-CodeUri: transaction-processor/
-
-# After (replace with your actual bucket name)
-CodeUri: s3://payalert-artifacts-{account-id}/function.zip
-```
-
-Save the file.
-
-### 1.5 Deploy via CloudFormation Console
+### 1.4 Deploy via CloudFormation Console
 
 1. Open the **[CloudFormation Console](https://us-east-1.console.aws.amazon.com/cloudformation/home?region=us-east-1)**.
 2. **Create stack** → **With new resources (standard)**.
-3. **Template source:** Upload a template file → **Choose file** → select the modified `infra/template.yaml` → **Next**.
+3. **Template source:** Upload a template file → **Choose file** → select `infra/lambda-stack.yaml` → **Next**.
 4. Fill in the stack details:
    - **Stack name:** `payalert-stack`
 5. Fill in the parameters:
@@ -172,6 +158,7 @@ Save the file.
 | `AlertEmail` | your real email address |
 | `AlertRiskThreshold` | `50` |
 | `TransactionTTLDays` | `90` |
+| `LambdaArtifactBucket` | `payalert-artifacts-<your-12-digit-account-id>` |
 | `LambdaRoleArn` | `arn:aws:iam::<your-account-id>:role/LabRole` |
 | `EnableForceFail` | `false` |
 
@@ -187,7 +174,7 @@ Save the file.
 
 Wait for status **CREATE_COMPLETE** (~2–3 minutes).
 
-### 1.6 Save the stack outputs
+### 1.5 Save the stack outputs
 
 1. **CloudFormation** → **Stacks** → `payalert-stack` → **Outputs** tab.
 2. Copy these values — you will need them in later steps:
@@ -199,7 +186,7 @@ Wait for status **CREATE_COMPLETE** (~2–3 minutes).
 | `TransactionsTableName` | `payalert-transactions-dev` |
 | `AlertTopicArn` | `arn:aws:sns:us-east-1:123456789012:payalert-alerts-dev` |
 
-### 1.7 Confirm the SNS email subscription
+### 1.6 Confirm the SNS email subscription
 
 AWS sends a confirmation email to `AlertEmail` immediately after deployment. Open the email from `no-reply@sns.amazonaws.com` and click **Confirm subscription**.
 
@@ -892,7 +879,7 @@ sudo systemctl status payalert-audit-portal
 
 **Template / infrastructure change:**
 
-1. **CloudFormation** → `payalert-stack` → **Update** → **Replace current template** → upload the modified `template.yaml`.
+1. **CloudFormation** → `payalert-stack` → **Update** → **Replace current template** → upload `infra/lambda-stack.yaml`.
 2. Re-enter `LambdaRoleArn` (`arn:aws:iam::<account-id>:role/LabRole`) — CloudFormation does not remember it between updates in Learner Labs.
 
 **EC2 application change:**

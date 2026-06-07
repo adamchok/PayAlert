@@ -106,7 +106,7 @@ Full step-by-step instructions are in [`doc/`](doc/).
 ### Lambda (CloudFormation)
 
 1. Zip `infra/src/` and upload to S3
-2. Deploy `infra/template.yaml` via the CloudFormation console
+2. Deploy `infra/lambda-stack.yaml` via the CloudFormation console
 3. Set parameters: `Environment`, `AlertEmail`, `AlertRiskThreshold`, `TransactionTTLDays`
 
 CloudFormation creates: SQS queue + DLQ, DynamoDB table, Lambda function, SNS topic, CloudWatch alarms.

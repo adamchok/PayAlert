@@ -39,7 +39,7 @@ From the `infra/` directory:
 sam build
 ```
 
-SAM reads `template.yaml`, installs `transaction-processor/requirements.txt` into a staging directory, and produces a `.aws-sam/build/` artifact used automatically by `sam deploy`.
+SAM reads `lambda-stack.yaml`, installs `transaction-processor/requirements.txt` into a staging directory, and produces a `.aws-sam/build/` artifact used automatically by `sam deploy`.
 
 > `*.zip` and `.aws-sam/` are in `.gitignore` — packaged artifacts are never committed.
 
