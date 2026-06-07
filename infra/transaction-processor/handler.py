@@ -117,7 +117,7 @@ def _publish_alert(transaction: dict) -> None:
     amount_myr = transaction.get("amountMYR", transaction.get("amount", 0))
     merchant_name = transaction.get("merchantName", "Unknown Merchant")
     merchant_country = transaction.get("merchantCountry", "?")
-    risk_flags = transaction.get("riskFlags", [])
+    raw_flags: list = transaction.get("riskFlags", [])
     timestamp = transaction.get("timestamp", "")
     channel = transaction.get("channel", "")
     tx_type = transaction.get("transactionType", "")
@@ -125,25 +125,34 @@ def _publish_alert(transaction: dict) -> None:
     if isinstance(amount_myr, Decimal):
         amount_myr = float(amount_myr)
 
-    subject = f"[PayAlert] {risk_level} Risk — {account_id} | Score {risk_score}/100"
+    try:
+        dt = datetime.fromisoformat(timestamp)
+        formatted_ts = dt.strftime("%d %b %Y, %I:%M %p %Z").strip()
+    except (ValueError, TypeError):
+        formatted_ts = timestamp
+
+    formatted_flags = [f.replace("_", " ").title() for f in raw_flags] if raw_flags else ["None"]
+
+    subject = f"[PayAlert] {risk_level} Risk | {customer_name} | Score {risk_score}/100"
 
     message = (
-        f"PayAlert Fraud Detection Alert\n"
-        f"{'=' * 52}\n\n"
-        f"Risk Level    : {risk_level}\n"
-        f"Risk Score    : {risk_score}/100\n"
-        f"Risk Flags    : {', '.join(risk_flags) if risk_flags else 'None'}\n\n"
-        f"Transaction ID: {transaction_id}\n"
-        f"Type          : {tx_type}\n"
-        f"Channel       : {channel}\n"
-        f"Timestamp     : {timestamp}\n\n"
-        f"Account       : {account_id}\n"
-        f"Customer      : {customer_name}\n\n"
-        f"Merchant      : {merchant_name}\n"
-        f"Country       : {merchant_country}\n"
-        f"Amount (MYR)  : {amount_myr:,.2f}\n\n"
-        f"{'=' * 52}\n"
-        f"Log in to the PayAlert Audit Portal to review.\n"
+        f"PayAlert Fraud Detection Alert\n\n"
+        f"RISK ASSESSMENT\n"
+        f"  Level  : {risk_level}\n"
+        f"  Score  : {risk_score}/100\n"
+        f"  Flags  : {', '.join(formatted_flags)}\n\n"
+        f"CUSTOMER\n"
+        f"  Name   : {customer_name}\n"
+        f"  Account: {account_id}\n\n"
+        f"TRANSACTION\n"
+        f"  ID     : {transaction_id}\n"
+        f"  Type   : {tx_type.replace('_', ' ').title()} ({channel})\n"
+        f"  Amount : MYR {amount_myr:,.2f}\n"
+        f"  Time   : {formatted_ts}\n\n"
+        f"MERCHANT\n"
+        f"  Name   : {merchant_name}\n"
+        f"  Country: {merchant_country}\n\n"
+        f"Log in to the PayAlert Audit Portal to investigate.\n"
     )
 
     try:
