@@ -27,7 +27,6 @@ Step-by-step instructions for deploying and running the full PayAlert architectu
                     │  │  private-1 · :5001         │  │  private-2 · :3000       ││
                     │  └────────────────────────────┘  └──────────────────────────┘│
                     │                                                              │
-                    │  VPC Endpoints: ssm · ssmmessages · ec2messages              │
                     └──────────────────────────────────────────────────────────────┘
                                         │ outbound via NAT Gateway
                                         ▼
@@ -36,7 +35,7 @@ Step-by-step instructions for deploying and running the full PayAlert architectu
                               DynamoDB   SNS (email)
 ```
 
-**SSM** = AWS Systems Manager Session Manager. Provides browser shell access to private EC2 instances via the AWS Console — no SSH, no key pair, no bastion required. VPC Interface Endpoints for `ssm`, `ssmmessages`, and `ec2messages` are provisioned by the network stack, keeping SSM traffic inside the VPC and off the NAT Gateway.
+**SSM** = AWS Systems Manager Session Manager. Provides browser shell access to private EC2 instances via the AWS Console — no SSH, no key pair, no bastion required. SSM traffic routes outbound through the NAT Gateway.
 
 **Components deployed:**
 
@@ -44,8 +43,7 @@ Step-by-step instructions for deploying and running the full PayAlert architectu
 |---|---|---|
 | Lambda + SQS + DynamoDB + SNS | AWS (via CloudFormation Console) | Processes and stores transactions, sends fraud alerts |
 | Custom VPC | AWS | Isolates all EC2 resources from the default VPC |
-| NAT Gateway | Public Subnet (payalert-public-1) | Outbound internet access for private subnet instances |
-| SSM VPC Endpoints | Private Subnets | SSM traffic stays inside VPC — no NAT egress cost |
+| NAT Gateway | Public Subnet (payalert-public-1) | Outbound internet access for private subnet instances (including SSM) |
 | Transaction Generator | EC2 `payalert-producer-ec2` (Private Subnet) | Streams synthetic transactions to SQS |
 | Generator Web UI | EC2 `payalert-producer-ec2` (via ALB :5001) | Browser control panel — protected by login |
 | Audit Portal | EC2 `payalert-portal-ec2` + ASG behind ALB (port 80) | Live fraud dashboard reading DynamoDB |
@@ -268,7 +266,7 @@ The EC2 instances need permission to write to SQS (generator) and read from Dyna
 
 ## Step 3 — Deploy the network stack
 
-All network infrastructure — VPC, subnets, NAT gateway, route tables, security groups, SSM VPC endpoints, both EC2 instances, ALB, target groups, and listeners — is provisioned by `infra/network-stack.yaml` in a single CloudFormation deployment.
+All network infrastructure — VPC, subnets, NAT gateway, route tables, security groups, both EC2 instances, ALB, target groups, and listeners — is provisioned by `infra/network-stack.yaml` in a single CloudFormation deployment.
 
 ### 3.1 Find the Ubuntu AMI ID
 
@@ -299,7 +297,7 @@ Port 5001 (generator UI) on the ALB is restricted to your IP only.
 
 5. **Next** → **Next** → **Submit**.
 
-Wait for status **CREATE_COMPLETE** (~3–5 minutes). This creates the VPC, subnets, NAT gateway, SSM VPC endpoints, security groups, both EC2 instances, ALB, and target groups.
+Wait for status **CREATE_COMPLETE** (~3–5 minutes). This creates the VPC, subnets, NAT gateway, security groups, both EC2 instances, ALB, and target groups.
 
 ### 3.4 Save the stack outputs
 
@@ -789,8 +787,6 @@ Ensure the ASG stack is deleted first (above) so no ASG instances remain registe
 | Private route table | `payalert-private-rt` |
 | ALB security group | `PayAlertALBSG` |
 | EC2 security group | `PayAlertEC2SG` |
-| SSM endpoint security group | `PayAlertSSMEndpointSG` |
-| VPC endpoints | `ssm`, `ssmmessages`, `ec2messages` (Interface type) |
 | Load balancer | `payalert-alb` |
 | Audit portal target group | `payalert-audit-tg` (port 3000) |
 | Generator target group | `payalert-generator-tg` (port 5001) |
