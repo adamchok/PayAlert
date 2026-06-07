@@ -14,12 +14,12 @@
 #   PORTAL_USERNAME  Username for the audit portal login
 #   PORTAL_PASSWORD  Password for the audit portal login
 #   GITHUB_USERNAME  GitHub username (SSH key must already be added to GitHub)
-#   DYNAMODB_TABLE   DynamoDB table name (e.g. payalert-transactions-dev)
 #
 # Optional env vars:
+#   ENVIRONMENT      Deployment environment suffix (default: dev) — controls table, queue, and DLQ names
+#   DYNAMODB_TABLE   Override the auto-constructed DynamoDB table name (default: payalert-transactions-{ENVIRONMENT})
 #   AUTH_SECRET      NextAuth secret (auto-generated with openssl if not set)
 #   AWS_REGION       AWS region (default: us-east-1)
-#   ENVIRONMENT      Deployment environment suffix for SQS/DLQ names (default: dev)
 #   FORCE_ENV        Set to 1 to overwrite an existing .env.local
 
 set -euo pipefail
@@ -34,11 +34,11 @@ error() { echo -e "${RED}[$(date +%H:%M:%S)] ERROR: ${*}${NC}" >&2; exit 1; }
 [[ -n "${PORTAL_USERNAME:-}" ]] || error "PORTAL_USERNAME is required"
 [[ -n "${PORTAL_PASSWORD:-}" ]] || error "PORTAL_PASSWORD is required"
 [[ -n "${GITHUB_USERNAME:-}" ]] || error "GITHUB_USERNAME is required"
-[[ -n "${DYNAMODB_TABLE:-}" ]]  || error "DYNAMODB_TABLE is required"
 
 AUTH_SECRET="${AUTH_SECRET:-$(openssl rand -base64 32)}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 ENVIRONMENT="${ENVIRONMENT:-dev}"
+DYNAMODB_TABLE="${DYNAMODB_TABLE:-payalert-transactions-${ENVIRONMENT}}"
 FORCE_ENV="${FORCE_ENV:-0}"
 REPO_DIR=/opt/payalert-repo
 APP_DIR=/opt/payalert/audit-portal-v2

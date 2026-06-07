@@ -482,10 +482,9 @@ Replace the values below with your own, then run:
 
 ```bash
 ACCOUNT_ID=123456789012 \
+ENVIRONMENT=dev \
 PORTAL_USERNAME=admin \
 PORTAL_PASSWORD=YourStrongPassword \
-DYNAMODB_TABLE=payalert-transactions-dev \
-ENVIRONMENT=dev \
 GITHUB_USERNAME=your-github-username \
 bash <(curl -fsSL https://raw.githubusercontent.com/<your-username>/PayAlert/master/scripts/setup-audit-portal-ec2.sh)
 ```
@@ -494,10 +493,9 @@ Or, if you have already cloned the repo manually:
 
 ```bash
 ACCOUNT_ID=123456789012 \
+ENVIRONMENT=dev \
 PORTAL_USERNAME=admin \
 PORTAL_PASSWORD=YourStrongPassword \
-DYNAMODB_TABLE=payalert-transactions-dev \
-ENVIRONMENT=dev \
 GITHUB_USERNAME=your-github-username \
 bash /opt/payalert-repo/scripts/setup-audit-portal-ec2.sh
 ```
@@ -510,7 +508,7 @@ The script:
 5. Runs `npm ci && npm run build` (1–5 minutes)
 6. Installs and starts the `payalert-audit-portal` systemd service
 
-`ACCOUNT_ID` is your 12-digit AWS account ID. `ENVIRONMENT` controls the SQS/DLQ queue name suffix (default: `dev`) — set to `staging` or `prod` to match your deployment. Add `FORCE_ENV=1` to overwrite an existing `.env.local`. `AWS_REGION` defaults to `us-east-1`.
+`ACCOUNT_ID` is your 12-digit AWS account ID. `ENVIRONMENT` controls the DynamoDB table name, SQS queue, and DLQ suffix (default: `dev`) — set to `staging` or `prod` to match your deployment. Add `FORCE_ENV=1` to overwrite an existing `.env.local`. `AWS_REGION` defaults to `us-east-1`.
 
 > **ASG note:** If you plan to use multiple instances behind the ASG, generate `AUTH_SECRET` once with `openssl rand -base64 32` and pass the same value to all instances so sessions stay valid across targets.
 
