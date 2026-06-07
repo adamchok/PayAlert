@@ -70,9 +70,8 @@ def _process_dlq_record(table: Any, record: dict) -> None:
         "receiveCount": receive_count,
         "ttl": int(now.timestamp()) + TTL_SECONDS,
         "datePartition": raw_ts[:10],
+        "rawBody": raw_body,
     }
-    if not body:
-        item["rawBody"] = raw_body
 
     try:
         table.put_item(

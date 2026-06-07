@@ -1,4 +1,4 @@
-import { QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb'
+import { QueryCommand, UpdateCommand, GetCommand } from '@aws-sdk/lib-dynamodb'
 import { SendMessageCommand } from '@aws-sdk/client-sqs'
 import { dynamoClient, DYNAMODB_TABLE, FAILED_TRANSACTIONS_INDEX } from '@/lib/dynamodb'
 import { sqsClient, MAIN_QUEUE_URL } from '@/lib/sqs'
@@ -81,8 +81,23 @@ export async function POST(request: Request) {
       if (!MAIN_QUEUE_URL) {
         return Response.json({ error: 'MAIN_QUEUE_URL is not configured' }, { status: 500 })
       }
-      // Strip _forceFail so the message processes successfully on retry
+      // Reconstruct message body from DynamoDB if rawBody was not stored (legacy records)
       let messageBody = rawBody ?? ''
+      if (!messageBody) {
+        const getResult = await dynamoClient.send(new GetCommand({
+          TableName: DYNAMODB_TABLE,
+          Key: { transactionId },
+        }))
+        if (getResult.Item) {
+          const { processingStatus, failedAt, receiveCount, ttl, datePartition, rawBody: _rb, ...txFields } = getResult.Item
+          void processingStatus; void failedAt; void receiveCount; void ttl; void datePartition; void _rb
+          messageBody = JSON.stringify(txFields)
+        }
+      }
+      if (!messageBody) {
+        return Response.json({ error: 'Cannot redrive: no message body available' }, { status: 400 })
+      }
+      // Strip _forceFail so the message processes successfully on retry
       try {
         const parsed = JSON.parse(messageBody)
         if (parsed._forceFail) {
