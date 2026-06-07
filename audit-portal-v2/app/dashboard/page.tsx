@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { AppShell } from '@/components/layout/AppShell'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
 import { StatCards } from '@/components/dashboard/StatCards'

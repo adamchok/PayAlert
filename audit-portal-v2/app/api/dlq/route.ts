@@ -112,8 +112,15 @@ export async function POST(request: Request) {
           MessageBody: messageBody,
         })
       )
-      // DynamoDB record is healed automatically when the main processor rewrites it
-      // without processingStatus (ConditionExpression allows overwrite of failed records).
+      // Mark as redriving immediately so the record drops off the FailedTransactionsIndex
+      // GSI query (processingStatus="failed") without waiting for Lambda to process it.
+      // Main processor heals it fully on success; DLQ handler resets to "failed" if it fails again.
+      await dynamoClient.send(new UpdateCommand({
+        TableName: DYNAMODB_TABLE,
+        Key: { transactionId },
+        UpdateExpression: 'SET processingStatus = :r',
+        ExpressionAttributeValues: { ':r': 'redriving' },
+      }))
     } else {
       // Mark discarded — removed from the failed GSI query, record is preserved
       await dynamoClient.send(

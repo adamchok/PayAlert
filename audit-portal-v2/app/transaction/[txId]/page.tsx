@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { notFound } from 'next/navigation'
 import { AppShell } from '@/components/layout/AppShell'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'

@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { QueryCommand } from '@aws-sdk/lib-dynamodb'
 import { AppShell } from '@/components/layout/AppShell'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
