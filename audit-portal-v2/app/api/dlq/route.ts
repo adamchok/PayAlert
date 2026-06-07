@@ -1,93 +1,79 @@
-import {
-  GetQueueAttributesCommand,
-  ReceiveMessageCommand,
-  DeleteMessageCommand,
-  SendMessageCommand,
-} from '@aws-sdk/client-sqs'
-import { sqsClient, DLQ_URL, MAIN_QUEUE_URL } from '@/lib/sqs'
+import { QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb'
+import { SendMessageCommand } from '@aws-sdk/client-sqs'
+import { dynamoClient, DYNAMODB_TABLE, FAILED_TRANSACTIONS_INDEX } from '@/lib/dynamodb'
+import { sqsClient, MAIN_QUEUE_URL } from '@/lib/sqs'
 import type { DlqMessage } from '@/lib/types'
 import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
-// GET — return DLQ queue stats + up to 10 peeked messages.
-// Messages are received with a 300s visibility window so the client
-// has time to act on them before they reappear in the queue.
-export async function GET() {
-  if (!DLQ_URL) {
-    return Response.json({ error: 'DLQ_URL is not configured' }, { status: 500 })
+// GET — query FailedTransactionsIndex for processingStatus="failed" records.
+// Returns newest-first, 50 per page. Pass ?cursor=<token> for subsequent pages.
+export async function GET(request: Request) {
+  if (!DYNAMODB_TABLE) {
+    return Response.json({ error: 'DYNAMODB_TABLE is not configured' }, { status: 500 })
+  }
+
+  const { searchParams } = new URL(request.url)
+  const cursorParam = searchParams.get('cursor')
+  let exclusiveStartKey: Record<string, unknown> | undefined
+  if (cursorParam) {
+    try {
+      exclusiveStartKey = JSON.parse(Buffer.from(cursorParam, 'base64').toString('utf8'))
+    } catch {
+      return Response.json({ error: 'Invalid cursor' }, { status: 400 })
+    }
   }
 
   try {
-    const [attrsRes, msgRes] = await Promise.all([
-      sqsClient.send(
-        new GetQueueAttributesCommand({
-          QueueUrl: DLQ_URL,
-          AttributeNames: [
-            'ApproximateNumberOfMessages',
-            'ApproximateNumberOfMessagesNotVisible',
-          ],
-        })
-      ),
-      sqsClient.send(
-        new ReceiveMessageCommand({
-          QueueUrl: DLQ_URL,
-          MaxNumberOfMessages: 10,
-          VisibilityTimeout: 300,
-          AttributeNames: ['All'],
-          MessageAttributeNames: ['All'],
-          WaitTimeSeconds: 0,
-        })
-      ),
-    ])
+    const result = await dynamoClient.send(
+      new QueryCommand({
+        TableName: DYNAMODB_TABLE,
+        IndexName: FAILED_TRANSACTIONS_INDEX,
+        KeyConditionExpression: 'processingStatus = :s',
+        ExpressionAttributeValues: { ':s': 'failed' },
+        ScanIndexForward: false,
+        Limit: 50,
+        ExclusiveStartKey: exclusiveStartKey,
+      })
+    )
 
-    const attrs = attrsRes.Attributes ?? {}
-    const queueDepth = parseInt(attrs.ApproximateNumberOfMessages ?? '0', 10)
-    const inFlight = parseInt(attrs.ApproximateNumberOfMessagesNotVisible ?? '0', 10)
+    const messages: DlqMessage[] = (result.Items ?? []).map((item) => ({
+      transactionId: item.transactionId ?? '',
+      failedAt: item.failedAt ?? '',
+      receiveCount: item.receiveCount ?? 1,
+      body: item.transactionId ? (item as unknown as DlqMessage['body']) : null,
+      rawBody: item.rawBody ?? '',
+    }))
 
-    const messages: DlqMessage[] = (msgRes.Messages ?? []).map((m) => {
-      const sentTs = m.Attributes?.SentTimestamp
-      const sentAt = sentTs ? new Date(parseInt(sentTs, 10)).toISOString() : ''
-      const receiveCount = parseInt(m.Attributes?.ApproximateReceiveCount ?? '1', 10)
+    const nextCursor = result.LastEvaluatedKey
+      ? Buffer.from(JSON.stringify(result.LastEvaluatedKey)).toString('base64')
+      : undefined
 
-      let body: DlqMessage['body'] = null
-      try {
-        body = JSON.parse(m.Body ?? '')
-      } catch {
-        body = null
-      }
-
-      return {
-        messageId: m.MessageId ?? '',
-        receiptHandle: m.ReceiptHandle ?? '',
-        sentAt,
-        receiveCount,
-        body,
-        rawBody: m.Body ?? '',
-      }
-    })
-
-    return Response.json({ queueDepth, inFlight, messages })
+    return Response.json({ messages, nextCursor })
   } catch (err) {
     logger.error('[dlq GET] fetch failed', err)
-    return Response.json({ error: 'Failed to fetch DLQ' }, { status: 500 })
+    return Response.json({ error: 'Failed to fetch failed transactions' }, { status: 500 })
   }
 }
 
-// POST — redrive (send back to main queue + delete) or delete from DLQ.
+// POST — redrive (send back to main queue) or delete (mark discarded) a failed transaction.
 export async function POST(request: Request) {
-  if (!DLQ_URL) {
-    return Response.json({ error: 'DLQ_URL is not configured' }, { status: 500 })
+  if (!DYNAMODB_TABLE) {
+    return Response.json({ error: 'DYNAMODB_TABLE is not configured' }, { status: 500 })
   }
 
-  const { action, receiptHandle, rawBody } = await request.json() as {
+  const { action, transactionId, rawBody } = await request.json() as {
     action: 'redrive' | 'delete'
-    receiptHandle: string
+    transactionId: string
     rawBody?: string
   }
 
-  if (!receiptHandle) {
-    return Response.json({ error: 'receiptHandle is required' }, { status: 400 })
+  if (!transactionId) {
+    return Response.json({ error: 'transactionId is required' }, { status: 400 })
+  }
+  if (action !== 'redrive' && action !== 'delete') {
+    return Response.json({ error: 'Invalid action' }, { status: 400 })
   }
 
   try {
@@ -95,6 +81,7 @@ export async function POST(request: Request) {
       if (!MAIN_QUEUE_URL) {
         return Response.json({ error: 'MAIN_QUEUE_URL is not configured' }, { status: 500 })
       }
+      // Strip _forceFail so the message processes successfully on retry
       let messageBody = rawBody ?? ''
       try {
         const parsed = JSON.parse(messageBody)
@@ -110,14 +97,19 @@ export async function POST(request: Request) {
           MessageBody: messageBody,
         })
       )
+      // DynamoDB record is healed automatically when the main processor rewrites it
+      // without processingStatus (ConditionExpression allows overwrite of failed records).
+    } else {
+      // Mark discarded — removed from the failed GSI query, record is preserved
+      await dynamoClient.send(
+        new UpdateCommand({
+          TableName: DYNAMODB_TABLE,
+          Key: { transactionId },
+          UpdateExpression: 'SET processingStatus = :d',
+          ExpressionAttributeValues: { ':d': 'discarded' },
+        })
+      )
     }
-
-    await sqsClient.send(
-      new DeleteMessageCommand({
-        QueueUrl: DLQ_URL,
-        ReceiptHandle: receiptHandle,
-      })
-    )
 
     return Response.json({ ok: true })
   } catch (err) {

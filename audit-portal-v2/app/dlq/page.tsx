@@ -1,53 +1,40 @@
-import { GetQueueAttributesCommand } from '@aws-sdk/client-sqs'
+import { QueryCommand } from '@aws-sdk/lib-dynamodb'
 import { AppShell } from '@/components/layout/AppShell'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
 import { Card, CardContent } from '@/components/ui/card'
 import { DLQTable } from '@/components/dlq/DLQTable'
-import { sqsClient, DLQ_URL } from '@/lib/sqs'
-import { AlertTriangle, Inbox, Activity, Clock } from 'lucide-react'
+import { dynamoClient, DYNAMODB_TABLE, FAILED_TRANSACTIONS_INDEX } from '@/lib/dynamodb'
+import { AlertTriangle, Inbox, RefreshCw } from 'lucide-react'
 
-async function getDLQStats() {
-  if (!DLQ_URL) return null
+async function getFailedCount(): Promise<number> {
+  if (!DYNAMODB_TABLE) return 0
   try {
-    const res = await sqsClient.send(
-      new GetQueueAttributesCommand({
-        QueueUrl: DLQ_URL,
-        AttributeNames: [
-          'ApproximateNumberOfMessages',
-          'ApproximateNumberOfMessagesNotVisible',
-          'CreatedTimestamp',
-        ],
+    const res = await dynamoClient.send(
+      new QueryCommand({
+        TableName: DYNAMODB_TABLE,
+        IndexName: FAILED_TRANSACTIONS_INDEX,
+        KeyConditionExpression: 'processingStatus = :s',
+        ExpressionAttributeValues: { ':s': 'failed' },
+        Select: 'COUNT',
       })
     )
-    const attrs = res.Attributes ?? {}
-    return {
-      depth: parseInt(attrs.ApproximateNumberOfMessages ?? '0', 10),
-      inFlight: parseInt(attrs.ApproximateNumberOfMessagesNotVisible ?? '0', 10),
-    }
+    return res.Count ?? 0
   } catch {
-    return null
+    return 0
   }
 }
 
 export default async function DLQPage() {
-  const stats = await getDLQStats()
+  const failedCount = await getFailedCount()
 
   const statCards = [
     {
-      label: 'Messages in DLQ',
-      value: stats?.depth ?? '—',
+      label: 'Failed Transactions',
+      value: failedCount,
       icon: Inbox,
       color: 'text-red-400',
       border: 'border-l-red-600',
       note: 'Awaiting review',
-    },
-    {
-      label: 'In Flight',
-      value: stats?.inFlight ?? '—',
-      icon: Activity,
-      color: 'text-orange-400',
-      border: 'border-l-orange-500',
-      note: 'Currently locked',
     },
     {
       label: 'Max Retries',
@@ -58,12 +45,12 @@ export default async function DLQPage() {
       note: 'Before DLQ routing',
     },
     {
-      label: 'Lock Window',
-      value: '5 min',
-      icon: Clock,
+      label: 'DLQ Retention',
+      value: '14 days',
+      icon: RefreshCw,
       color: 'text-blue-400',
       border: 'border-l-blue-500',
-      note: 'To redrive or delete',
+      note: 'SQS message window',
     },
   ]
 
@@ -78,14 +65,8 @@ export default async function DLQPage() {
           </p>
         </div>
 
-        {!DLQ_URL && (
-          <div className="rounded-lg border border-yellow-700 bg-yellow-900/20 px-4 py-3 text-sm text-yellow-300">
-            <strong>DLQ_URL</strong> is not set in <code>.env.local</code>. Add it to enable DLQ monitoring.
-          </div>
-        )}
-
         {/* Stat cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           {statCards.map(({ label, value, icon: Icon, color, border, note }) => (
             <Card key={label} className={`border-l-4 ${border}`}>
               <CardContent className="p-5 flex items-center justify-between">

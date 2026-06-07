@@ -126,14 +126,14 @@ Run from the `infra/transaction-processor/` directory on your workstation:
 
 ```bash
 cd infra/transaction-processor/
-zip function.zip handler.py
+zip function.zip handler.py dlq_handler.py utils.py
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-cd lambda\transaction-processor\
-Compress-Archive -Path handler.py -DestinationPath function.zip
+cd infra\transaction-processor\
+Compress-Archive -Path handler.py, dlq_handler.py, utils.py -DestinationPath function.zip -Force
 ```
 
 ### 1.3 Upload the Lambda zip to S3
@@ -537,13 +537,16 @@ The ALB (`payalert-alb`), both target groups (`payalert-audit-tg` on port 3000 a
 
 ### 8.2 Check target group health
 
-After the EC2 services are running (Steps 5–7), verify that both instances are registered and healthy:
+> **Skip for now — come back after Step 9.2.**
+> Target groups are intentionally empty at this stage. Instances are registered automatically by the ASG stack (Step 9), not by the EC2 setup steps. The ALB will return 502 until the ASG registers healthy targets.
+
+Once Step 9 is complete, verify here:
 
 1. **[EC2 Console](https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#TargetGroups:)** → **Target Groups**.
 2. Select `payalert-audit-tg` → **Targets** tab → wait for **Healthy** status.
 3. Select `payalert-generator-tg` → **Targets** tab → wait for **Healthy** status.
 
-Target registration and health checks can take 1–3 minutes after the applications start.
+Target registration and health checks can take 1–3 minutes after the ASG instances launch.
 
 ---
 
@@ -871,9 +874,9 @@ sudo systemctl status payalert-audit-portal
 
 **Lambda code change:**
 
-1. Re-zip: `cd infra/transaction-processor/ && zip function.zip handler.py`
+1. Re-zip: `cd infra/transaction-processor/ && zip function.zip handler.py dlq_handler.py utils.py`
 2. Re-upload to S3: S3 Console → `payalert-artifacts-{account-id}` → Upload → `function.zip`.
-3. Update Lambda: **Lambda** → `payalert-transaction-processor-dev` → **Code** tab → **Upload from** → **Amazon S3 location** → enter `s3://payalert-artifacts-{account-id}/function.zip` → **Save**.
+3. Update both functions: repeat for `payalert-transaction-processor-dev` **and** `payalert-dlq-processor-dev` — **Lambda** → function → **Code** tab → **Upload from** → **Amazon S3 location** → `s3://payalert-artifacts-{account-id}/function.zip` → **Save**.
 
 **Template / infrastructure change:**
 

@@ -7,7 +7,7 @@ import { useDLQMessages } from './useDLQMessages'
 import { DLQMessageRow } from './DLQMessageRow'
 
 export function DLQTable() {
-  const { data, fetchError, loading, rowState, fetchMessages, handleAction } = useDLQMessages()
+  const { data, fetchError, loading, loadingMore, rowState, fetchMessages, loadMore, handleAction } = useDLQMessages()
   const messages = data?.messages ?? []
 
   if (loading) {
@@ -64,7 +64,7 @@ export function DLQTable() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)] text-xs text-[var(--muted-foreground)] uppercase tracking-wide">
-                  <th className="text-left px-4 py-3 font-semibold">Sent At</th>
+                  <th className="text-left px-4 py-3 font-semibold">Failed At</th>
                   <th className="text-left px-4 py-3 font-semibold">Transaction ID</th>
                   <th className="text-left px-4 py-3 font-semibold">Account</th>
                   <th className="text-right px-4 py-3 font-semibold">Amount (MYR)</th>
@@ -76,9 +76,9 @@ export function DLQTable() {
               <tbody>
                 {messages.map((msg) => (
                   <DLQMessageRow
-                    key={msg.messageId}
+                    key={msg.transactionId}
                     msg={msg}
-                    state={rowState[msg.messageId]}
+                    state={rowState[msg.transactionId]}
                     onAction={handleAction}
                   />
                 ))}
@@ -88,9 +88,21 @@ export function DLQTable() {
         )}
 
         {messages.length > 0 && (
-          <p className="text-xs text-[var(--muted-foreground)] px-4 py-3 border-t border-[var(--border)]">
-            Messages are locked for 5 minutes after loading. Refresh to load the next batch.
-          </p>
+          <div className="px-4 py-3 border-t border-[var(--border)] flex items-center justify-between gap-3">
+            <p className="text-xs text-[var(--muted-foreground)]">
+              Showing {messages.length} failed transaction{messages.length !== 1 ? 's' : ''}. Redrive sends back to main queue; delete marks as discarded.
+            </p>
+            {data?.nextCursor && (
+              <button
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${loadingMore ? 'animate-spin' : ''}`} />
+                {loadingMore ? 'Loading…' : 'Load more'}
+              </button>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>

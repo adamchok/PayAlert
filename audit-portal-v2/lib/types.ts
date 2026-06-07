@@ -47,9 +47,8 @@ export interface DashboardStats {
 }
 
 export interface DlqMessage {
-  messageId: string
-  receiptHandle: string
-  sentAt: string
+  transactionId: string
+  failedAt: string
   receiveCount: number
   body: Partial<Transaction> | null
   rawBody: string

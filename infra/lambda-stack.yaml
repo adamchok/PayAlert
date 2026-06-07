@@ -146,6 +146,10 @@ Resources:
           AttributeType: S
         - AttributeName: datePartition
           AttributeType: S
+        - AttributeName: processingStatus
+          AttributeType: S
+        - AttributeName: failedAt
+          AttributeType: S
       KeySchema:
         - AttributeName: transactionId
           KeyType: HASH
@@ -174,6 +178,16 @@ Resources:
             - AttributeName: datePartition
               KeyType: HASH
             - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        # Query: "all failed transactions for the DLQ portal view"
+        # Sparse index — only records with processingStatus attribute appear here.
+        - IndexName: FailedTransactionsIndex
+          KeySchema:
+            - AttributeName: processingStatus
+              KeyType: HASH
+            - AttributeName: failedAt
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
@@ -261,6 +275,54 @@ Resources:
       TopicArn: !Ref AlertTopic
       Protocol: email
       Endpoint: !Ref AlertEmail
+
+  # ── Lambda: DLQ Processor ───────────────────────────────────────────────────
+
+  DLQProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub payalert-dlq-processor-${Environment}
+      CodeUri:
+        Bucket: !Ref LambdaArtifactBucket
+        Key: function.zip
+      Handler: dlq_handler.lambda_handler
+      Description: >
+        Reads failed messages from TransactionDLQ and writes them to DynamoDB
+        with processingStatus="failed" for audit portal visibility.
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref TransactionsTable
+          TTL_DAYS: !Ref TransactionTTLDays
+      Role: !Ref LambdaRoleArn
+      Events:
+        DLQTrigger:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt TransactionDLQ.Arn
+            BatchSize: 10
+      Tags:
+        Project: Capstone
+        Group: '4'
+        Scenario: PayAlert
+        Environment: !Ref Environment
+
+  DLQProcessorLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/payalert-dlq-processor-${Environment}
+      KmsKeyId: !GetAtt PayAlertKmsKey.Arn
+      RetentionInDays: 30
+      Tags:
+        - Key: Project
+          Value: Capstone
+        - Key: Group
+          Value: '4'
+        - Key: Scenario
+          Value: PayAlert
+        - Key: Environment
+          Value: !Ref Environment
 
   # ── Lambda: Transaction Processor ───────────────────────────────────────────
 

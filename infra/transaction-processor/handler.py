@@ -16,11 +16,12 @@ from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
+from utils import clean_item as _clean_item
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-_region = os.environ.get("AWS_REGION", "ap-southeast-1")
+_region = os.environ.get("AWS_REGION", "us-east-1")
 
 dynamodb = boto3.resource("dynamodb", region_name=_region)
 sns = boto3.client("sns", region_name=_region)
@@ -83,7 +84,9 @@ def process_transaction(table: Any, transaction: dict) -> None:
     try:
         table.put_item(
             Item=item,
-            ConditionExpression="attribute_not_exists(transactionId)",
+            # Allow overwriting records that carry processingStatus (i.e. previously
+            # failed transactions being redriven). Normal duplicates are still blocked.
+            ConditionExpression="attribute_not_exists(transactionId) OR attribute_exists(processingStatus)",
         )
     except ClientError as exc:
         if exc.response["Error"]["Code"] == "ConditionalCheckFailedException":
@@ -174,15 +177,3 @@ def _publish_alert(transaction: dict) -> None:
         # Alert failure must not roll back the DynamoDB write
         logger.error("SNS publish failed for transaction=%s: %s", transaction_id, exc)
 
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _clean_item(obj: Any) -> Any:
-    """Recursively strip None values and convert floats to Decimal for DynamoDB."""
-    if isinstance(obj, dict):
-        return {k: _clean_item(v) for k, v in obj.items() if v is not None}
-    if isinstance(obj, list):
-        return [_clean_item(v) for v in obj]
-    if isinstance(obj, float):
-        return Decimal(str(obj))
-    return obj

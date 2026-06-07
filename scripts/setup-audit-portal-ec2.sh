@@ -106,7 +106,6 @@ else
 DYNAMODB_TABLE=${DYNAMODB_TABLE}
 AWS_REGION=${AWS_REGION}
 NEXT_PUBLIC_ENVIRONMENT=prod
-DLQ_URL=https://sqs.${AWS_REGION}.amazonaws.com/${ACCOUNT_ID}/payalert-transactions-dlq-${ENVIRONMENT}
 MAIN_QUEUE_URL=https://sqs.${AWS_REGION}.amazonaws.com/${ACCOUNT_ID}/payalert-transactions-queue-${ENVIRONMENT}
 AUTH_SECRET=${AUTH_SECRET}
 PORTAL_USERNAME=${PORTAL_USERNAME}

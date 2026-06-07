@@ -22,17 +22,11 @@ export function DLQMessageRow({ msg, state, onAction }: Props) {
       ].join(' ')}
     >
       <td className="px-4 py-3 text-[var(--muted-foreground)] whitespace-nowrap">
-        {msg.sentAt ? new Date(msg.sentAt).toLocaleString() : '—'}
+        {msg.failedAt ? new Date(msg.failedAt).toLocaleString() : '—'}
       </td>
 
       <td className="px-4 py-3 font-mono text-xs">
-        {tx?.transactionId ? (
-          <span title={tx.transactionId}>{tx.transactionId.slice(0, 8)}…</span>
-        ) : (
-          <span className="text-[var(--muted-foreground)]" title={msg.messageId}>
-            {msg.messageId.slice(0, 8)}…
-          </span>
-        )}
+        <span title={msg.transactionId}>{msg.transactionId.slice(0, 8)}…</span>
       </td>
 
       <td className="px-4 py-3">
