@@ -320,9 +320,6 @@ Resources:
       UserData:
         Fn::Base64: |
           #!/bin/bash
-          apt-get update -y
-          apt-get install -y python3 python3-pip python3-full git
-          mkdir -p /opt/payalert /opt/payalert-repo
       Tags:
         - Key: Name
           Value: payalert-producer-ec2
@@ -349,11 +346,6 @@ Resources:
       UserData:
         Fn::Base64: |
           #!/bin/bash
-          apt-get update -y
-          apt-get install -y git curl
-          curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-          apt-get install -y nodejs
-          mkdir -p /opt/payalert /opt/payalert-repo
       Tags:
         - Key: Name
           Value: payalert-portal-ec2

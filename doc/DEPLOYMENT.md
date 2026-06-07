@@ -387,14 +387,12 @@ Type `yes` when prompted. You will see `Hi <username>! You've successfully authe
 Replace the values below with your own, then run:
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/<your-username>/PayAlert/master/scripts/setup-generator-ec2.sh -o /tmp/setup-generator.sh && \
 ACCOUNT_ID=123456789012 \
 ENVIRONMENT=dev \
 UI_USERNAME=payalert \
 UI_PASSWORD=YourStrongPassword \
-GITHUB_USERNAME=your-github-username
-
-curl -fsSL https://raw.githubusercontent.com/<your-username>/PayAlert/master/scripts/setup-generator-ec2.sh -o /tmp/setup-generator.sh && \
-ACCOUNT_ID=123456789012 ENVIRONMENT=dev UI_USERNAME=payalert UI_PASSWORD=YourStrongPassword GITHUB_USERNAME=your-github-username \
+GITHUB_USERNAME=your-github-username \
 bash /tmp/setup-generator.sh
 ```
 
@@ -486,14 +484,12 @@ ssh -T git@github.com   # type yes to accept fingerprint
 Replace the values below with your own, then run:
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/<your-username>/PayAlert/master/scripts/setup-audit-portal-ec2.sh -o /tmp/setup-portal.sh && \
 ACCOUNT_ID=123456789012 \
 ENVIRONMENT=dev \
 PORTAL_USERNAME=admin \
 PORTAL_PASSWORD=YourStrongPassword \
-GITHUB_USERNAME=your-github-username
-
-curl -fsSL https://raw.githubusercontent.com/<your-username>/PayAlert/master/scripts/setup-audit-portal-ec2.sh -o /tmp/setup-portal.sh && \
-ACCOUNT_ID=123456789012 ENVIRONMENT=dev PORTAL_USERNAME=admin PORTAL_PASSWORD=YourStrongPassword GITHUB_USERNAME=your-github-username \
+GITHUB_USERNAME=your-github-username \
 bash /tmp/setup-portal.sh
 ```
 
