@@ -391,9 +391,14 @@ ACCOUNT_ID=123456789012 \
 ENVIRONMENT=dev \
 UI_USERNAME=payalert \
 UI_PASSWORD=YourStrongPassword \
-GITHUB_USERNAME=your-github-username \
-bash <(curl -fsSL https://raw.githubusercontent.com/<your-username>/PayAlert/master/scripts/setup-generator-ec2.sh)
+GITHUB_USERNAME=your-github-username
+
+curl -fsSL https://raw.githubusercontent.com/<your-username>/PayAlert/master/scripts/setup-generator-ec2.sh -o /tmp/setup-generator.sh && \
+ACCOUNT_ID=123456789012 ENVIRONMENT=dev UI_USERNAME=payalert UI_PASSWORD=YourStrongPassword GITHUB_USERNAME=your-github-username \
+bash /tmp/setup-generator.sh
 ```
+
+> **Note:** `bash <(curl ...)` process substitution is blocked in SSM sessions. Always download to `/tmp` first.
 
 Or, if you have already cloned the repo manually:
 
@@ -485,9 +490,14 @@ ACCOUNT_ID=123456789012 \
 ENVIRONMENT=dev \
 PORTAL_USERNAME=admin \
 PORTAL_PASSWORD=YourStrongPassword \
-GITHUB_USERNAME=your-github-username \
-bash <(curl -fsSL https://raw.githubusercontent.com/<your-username>/PayAlert/master/scripts/setup-audit-portal-ec2.sh)
+GITHUB_USERNAME=your-github-username
+
+curl -fsSL https://raw.githubusercontent.com/<your-username>/PayAlert/master/scripts/setup-audit-portal-ec2.sh -o /tmp/setup-portal.sh && \
+ACCOUNT_ID=123456789012 ENVIRONMENT=dev PORTAL_USERNAME=admin PORTAL_PASSWORD=YourStrongPassword GITHUB_USERNAME=your-github-username \
+bash /tmp/setup-portal.sh
 ```
+
+> **Note:** `bash <(curl ...)` process substitution is blocked in SSM sessions. Always download to `/tmp` first.
 
 Or, if you have already cloned the repo manually:
 
