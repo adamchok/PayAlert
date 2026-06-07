@@ -387,8 +387,6 @@ Resources:
       UserData:
         Fn::Base64: |
           #!/bin/bash
-          systemctl enable amazon-ssm-agent
-          systemctl start amazon-ssm-agent
           apt-get update -y
           apt-get install -y python3 python3-pip python3-venv git
           mkdir -p /opt/payalert /opt/payalert-repo
@@ -418,8 +416,6 @@ Resources:
       UserData:
         Fn::Base64: |
           #!/bin/bash
-          systemctl enable amazon-ssm-agent
-          systemctl start amazon-ssm-agent
           apt-get update -y
           apt-get install -y git curl
           curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
