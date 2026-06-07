@@ -219,6 +219,7 @@ Resources:
       AutoScalingGroupName: !Ref PortalASG
       PolicyName: payalert-portal-request-count-tracking
       PolicyType: TargetTrackingScaling
+      EstimatedInstanceWarmup: 120
       TargetTrackingConfiguration:
         PredefinedMetricSpecification:
           PredefinedMetricType: ALBRequestCountPerTarget
@@ -227,7 +228,6 @@ Resources:
             - - Fn::ImportValue: !Sub payalert-alb-full-name-${Environment}
               - Fn::ImportValue: !Sub payalert-audit-tg-full-name-${Environment}
         TargetValue: 100.0
-        EstimatedInstanceWarmup: 120
 
   # Observational-only CPU alarm — does NOT trigger scaling.
   # Retained for anomaly detection: a CPU spike with low request count
