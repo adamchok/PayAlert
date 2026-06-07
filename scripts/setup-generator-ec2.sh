@@ -48,13 +48,14 @@ info "Step 1/6: Checking system packages..."
 MISSING=""
 command -v python3 &>/dev/null || MISSING="${MISSING} python3"
 command -v git     &>/dev/null || MISSING="${MISSING} git"
-# python3 -m venv --help exits 0 even without ensurepip — check directly
-python3 -c "import ensurepip" &>/dev/null 2>&1 || MISSING="${MISSING} python3-venv"
+# python3 -m venv --help exits 0 even without ensurepip — check directly.
+# python3-full is required on Ubuntu 26.04 (python3-venv has no candidate for 3.14).
+python3 -c "import ensurepip" &>/dev/null 2>&1 || MISSING="${MISSING} python3-full"
 
 if [[ -n "$MISSING" ]]; then
     warn "Installing:${MISSING}"
     sudo apt-get update -q
-    sudo apt-get install -y python3 python3-pip python3-venv git
+    sudo apt-get install -y python3 python3-pip python3-full git
 fi
 info "  python3: $(python3 --version) | git: $(git --version | cut -d' ' -f3)"
 
@@ -76,7 +77,7 @@ info "  HEAD: $(git -C "$REPO_DIR" log -1 --format='%h %s')"
 # ── 4. Copy app to deployment directory ─────────────────────────────────────
 info "Step 3/6: Deploying transaction-generator to ${APP_DIR}..."
 VENV_BACKUP=""
-if [[ -d "${APP_DIR}/.venv" ]]; then
+if [[ -d "${APP_DIR}/.venv" && -f "${APP_DIR}/.venv/bin/pip" ]]; then
     VENV_BACKUP=$(mktemp -d)
     cp -r "${APP_DIR}/.venv" "${VENV_BACKUP}/"
     info "  Preserved existing .venv"
