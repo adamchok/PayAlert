@@ -19,6 +19,7 @@
 # Optional env vars:
 #   AUTH_SECRET      NextAuth secret (auto-generated with openssl if not set)
 #   AWS_REGION       AWS region (default: us-east-1)
+#   ENVIRONMENT      Deployment environment suffix for SQS/DLQ names (default: dev)
 #   FORCE_ENV        Set to 1 to overwrite an existing .env.local
 
 set -euo pipefail
@@ -37,6 +38,7 @@ error() { echo -e "${RED}[$(date +%H:%M:%S)] ERROR: ${*}${NC}" >&2; exit 1; }
 
 AUTH_SECRET="${AUTH_SECRET:-$(openssl rand -base64 32)}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
+ENVIRONMENT="${ENVIRONMENT:-dev}"
 FORCE_ENV="${FORCE_ENV:-0}"
 REPO_DIR=/opt/payalert-repo
 APP_DIR=/opt/payalert/audit-portal-v2
@@ -61,7 +63,7 @@ info "  node: $(node --version) | npm: $(npm --version) | git: $(git --version |
 
 # ── 2. Directory ownership ───────────────────────────────────────────────────
 sudo mkdir -p "$REPO_DIR" /opt/payalert
-sudo chown "${CURRENT_USER}:${CURRENT_USER}" "$REPO_DIR" /opt/payalert
+sudo chown -R "${CURRENT_USER}:${CURRENT_USER}" "$REPO_DIR" /opt/payalert
 
 # ── 3. Clone or update repository ───────────────────────────────────────────
 info "Step 2/6: Syncing repository..."
@@ -104,8 +106,8 @@ else
 DYNAMODB_TABLE=${DYNAMODB_TABLE}
 AWS_REGION=${AWS_REGION}
 NEXT_PUBLIC_ENVIRONMENT=prod
-DLQ_URL=https://sqs.${AWS_REGION}.amazonaws.com/${ACCOUNT_ID}/payalert-transactions-dlq-dev
-MAIN_QUEUE_URL=https://sqs.${AWS_REGION}.amazonaws.com/${ACCOUNT_ID}/payalert-transactions-queue-dev
+DLQ_URL=https://sqs.${AWS_REGION}.amazonaws.com/${ACCOUNT_ID}/payalert-transactions-dlq-${ENVIRONMENT}
+MAIN_QUEUE_URL=https://sqs.${AWS_REGION}.amazonaws.com/${ACCOUNT_ID}/payalert-transactions-queue-${ENVIRONMENT}
 AUTH_SECRET=${AUTH_SECRET}
 PORTAL_USERNAME=${PORTAL_USERNAME}
 PORTAL_PASSWORD=${PORTAL_PASSWORD}
