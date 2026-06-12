@@ -97,7 +97,7 @@ All resources are tagged `Project: Capstone`, `Group: 4`, `Scenario: PayAlert`, 
 | Parameter | Value |
 |---|---|
 | `Environment` | `dev` |
-| `AmiId` | AMI ID of `payalert-portal-ami` — built in Step 9.1 from `payalert-portal-ec2` |
+| `PortalAmiId` | AMI ID of `payalert-portal-ami` — built in Step 9.1 from `payalert-portal-ec2` |
 | `ProducerAmiId` | AMI ID of `payalert-producer-ami` — built in Step 9.1 from `payalert-producer-ec2` |
 | `InstanceProfileName` | `LabInstanceProfile` |
 
@@ -600,7 +600,7 @@ With both AMI IDs from step 9.1, deploy `infra/asg-stack.yaml`:
 | Parameter | Value |
 |---|---|
 | `Environment` | `dev` |
-| `AmiId` | Portal AMI ID from step 9.1, e.g. `ami-xxxxxxxxxxxxxxxxx` |
+| `PortalAmiId` | Portal AMI ID from step 9.1, e.g. `ami-xxxxxxxxxxxxxxxxx` |
 | `ProducerAmiId` | Producer AMI ID from step 9.1, e.g. `ami-xxxxxxxxxxxxxxxxx` |
 | `InstanceProfileName` | `LabInstanceProfile` |
 
@@ -903,4 +903,4 @@ ACCOUNT_ID=<your 12-digit ID> PORTAL_USERNAME=admin PORTAL_PASSWORD=<your passwo
 bash /opt/payalert-repo/scripts/setup-audit-portal-ec2.sh
 ```
 
-After rebuilding the audit portal, create a new AMI from `payalert-portal-ec2` (Step 9.1) and update the `payalert-asg-stack` with the new `AmiId` so ASG instances get the latest build.
+After rebuilding the audit portal, create a new AMI from `payalert-portal-ec2` (Step 9.1) and update the `payalert-asg-stack` with the new `PortalAmiId` so ASG instances get the latest build.

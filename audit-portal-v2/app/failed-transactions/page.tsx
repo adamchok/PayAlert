@@ -4,7 +4,7 @@ import { QueryCommand } from '@aws-sdk/lib-dynamodb'
 import { AppShell } from '@/components/layout/AppShell'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
 import { Card, CardContent } from '@/components/ui/card'
-import { DLQTable } from '@/components/dlq/DLQTable'
+import { FailedTransactionsTable } from '@/components/failed-transactions/FailedTransactionsTable'
 import { dynamoClient, DYNAMODB_TABLE, FAILED_TRANSACTIONS_INDEX } from '@/lib/dynamodb'
 import { AlertTriangle, Inbox, RefreshCw } from 'lucide-react'
 
@@ -26,7 +26,7 @@ async function getFailedCount(): Promise<number> {
   }
 }
 
-export default async function DLQPage() {
+export default async function FailedTransactionsPage() {
   const failedCount = await getFailedCount()
 
   const statCards = [
@@ -61,7 +61,7 @@ export default async function DLQPage() {
       <Breadcrumbs />
       <div className="space-y-6">
         <div>
-          <h1 className="text-xl font-bold text-[var(--foreground)]">Dead Letter Queue</h1>
+          <h1 className="text-xl font-bold text-[var(--foreground)]">Failed Transactions</h1>
           <p className="text-sm text-[var(--muted-foreground)] mt-0.5">
             Transactions that failed processing after 3 attempts. Redrive to reprocess or delete to discard.
           </p>
@@ -85,7 +85,7 @@ export default async function DLQPage() {
           ))}
         </div>
 
-        <DLQTable />
+        <FailedTransactionsTable />
       </div>
     </AppShell>
   )

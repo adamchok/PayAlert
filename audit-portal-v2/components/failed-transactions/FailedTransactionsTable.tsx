@@ -3,11 +3,11 @@
 import { RefreshCw, AlertTriangle, Inbox } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { useDLQMessages } from './useDLQMessages'
-import { DLQMessageRow } from './DLQMessageRow'
+import { useFailedTransactions } from './useFailedTransactions'
+import { FailedTransactionRow } from './FailedTransactionRow'
 
-export function DLQTable() {
-  const { data, fetchError, loading, loadingMore, rowState, fetchMessages, loadMore, handleAction } = useDLQMessages()
+export function FailedTransactionsTable() {
+  const { data, fetchError, loading, loadingMore, rowState, fetchMessages, loadMore, handleAction } = useFailedTransactions()
   const messages = data?.messages ?? []
 
   if (loading) {
@@ -15,7 +15,7 @@ export function DLQTable() {
       <Card>
         <CardContent className="p-8 flex items-center justify-center gap-3 text-[var(--muted-foreground)]">
           <RefreshCw className="h-4 w-4 animate-spin" />
-          <span className="text-sm">Loading DLQ messages…</span>
+          <span className="text-sm">Loading failed transactions…</span>
         </CardContent>
       </Card>
     )
@@ -56,7 +56,7 @@ export function DLQTable() {
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3 text-[var(--muted-foreground)]">
             <Inbox className="h-10 w-10 opacity-30" />
-            <p className="text-sm font-medium">No messages in the DLQ</p>
+            <p className="text-sm font-medium">No failed transactions</p>
             <p className="text-xs opacity-60">All transactions are processing normally.</p>
           </div>
         ) : (
@@ -75,7 +75,7 @@ export function DLQTable() {
               </thead>
               <tbody>
                 {messages.map((msg) => (
-                  <DLQMessageRow
+                  <FailedTransactionRow
                     key={msg.transactionId}
                     msg={msg}
                     state={rowState[msg.transactionId]}

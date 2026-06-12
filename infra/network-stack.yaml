@@ -406,6 +406,7 @@ Resources:
       HealthyThresholdCount: 2
       UnhealthyThresholdCount: 3
       HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 10
       Tags:
         - Key: Project
           Value: Capstone
@@ -429,6 +430,7 @@ Resources:
       HealthyThresholdCount: 2
       UnhealthyThresholdCount: 3
       HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 10
       Tags:
         - Key: Project
           Value: Capstone

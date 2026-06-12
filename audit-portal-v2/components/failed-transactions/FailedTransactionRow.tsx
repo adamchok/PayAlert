@@ -4,7 +4,7 @@ import { RotateCcw, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { RiskBadge } from '@/components/shared/RiskBadge'
 import type { DlqMessage, RiskLevel } from '@/lib/types'
-import type { RowState } from './useDLQMessages'
+import type { RowState } from './useFailedTransactions'
 
 interface Props {
   msg: DlqMessage
@@ -12,7 +12,7 @@ interface Props {
   onAction: (action: 'redrive' | 'delete', msg: DlqMessage) => void
 }
 
-export function DLQMessageRow({ msg, state, onAction }: Props) {
+export function FailedTransactionRow({ msg, state, onAction }: Props) {
   const tx = msg.body
   return (
     <tr

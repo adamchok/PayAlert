@@ -9,7 +9,7 @@ const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/transactions', label: 'Transactions', icon: List },
   { href: '/live-audit', label: 'Live Audit', icon: Activity },
-  { href: '/dlq', label: 'Dead Letter Queue', icon: AlertOctagon },
+  { href: '/failed-transactions', label: 'Failed Transactions', icon: AlertOctagon },
 ]
 
 interface SidebarProps {

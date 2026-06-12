@@ -52,7 +52,7 @@ export async function GET(request: Request) {
 
     return Response.json({ messages, nextCursor })
   } catch (err) {
-    logger.error('[dlq GET] fetch failed', err)
+    logger.error('[failed-transactions GET] fetch failed', err)
     return Response.json({ error: 'Failed to fetch failed transactions' }, { status: 500 })
   }
 }
@@ -135,7 +135,7 @@ export async function POST(request: Request) {
 
     return Response.json({ ok: true })
   } catch (err) {
-    logger.error('[dlq POST] action failed', err)
+    logger.error('[failed-transactions POST] action failed', err)
     return Response.json({ error: 'Action failed' }, { status: 500 })
   }
 }

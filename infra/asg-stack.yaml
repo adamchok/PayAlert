@@ -14,7 +14,7 @@ Parameters:
     AllowedValues: [dev, staging, prod]
     Description: Must match the Environment value used in the network stack
 
-  AmiId:
+  PortalAmiId:
     Type: AWS::EC2::Image::Id
     Description: >
       AMI ID of payalert-portal-ami — created from the configured
@@ -44,7 +44,7 @@ Resources:
     Properties:
       LaunchTemplateName: payalert-portal-lt
       LaunchTemplateData:
-        ImageId: !Ref AmiId
+        ImageId: !Ref PortalAmiId
         InstanceType: t3.large
         SecurityGroupIds:
           - Fn::ImportValue: !Sub payalert-ec2-sg-id-${Environment}
@@ -53,10 +53,7 @@ Resources:
         UserData:
           Fn::Base64: |
             #!/bin/bash
-            set -e
-            snap install amazon-ssm-agent --classic
-            systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
-            systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
+            systemctl restart payalert-audit-portal
         MetadataOptions:
           HttpTokens: required
           HttpPutResponseHopLimit: 1
@@ -140,10 +137,7 @@ Resources:
         UserData:
           Fn::Base64: |
             #!/bin/bash
-            set -e
-            snap install amazon-ssm-agent --classic
-            systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
-            systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
+            systemctl restart payalert-portal
         TagSpecifications:
           - ResourceType: instance
             Tags:
