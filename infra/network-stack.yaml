@@ -67,6 +67,15 @@ Parameters:
     NoEcho: true
     Description: Password for the audit portal login.
 
+  PortalDomain:
+    Type: String
+    Default: ''
+    Description: >
+      Custom domain hostname for the audit portal (e.g. payalert-portal.adamchok.xyz).
+      When set, an explicit host-based routing rule on port 80 forwards this hostname to
+      the audit target group. The default action already covers this — this parameter is
+      optional but makes routing intent explicit.
+
   ProducerDomain:
     Type: String
     Default: ''
@@ -80,6 +89,7 @@ Parameters:
 
 Conditions:
   HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
+  HasPortalDomain: !Not [!Equals [!Ref PortalDomain, '']]
   HasProducerDomain: !Not [!Equals [!Ref ProducerDomain, '']]
 
 # ── Resources ─────────────────────────────────────────────────────────────────
@@ -544,6 +554,21 @@ Resources:
       DefaultActions:
         - Type: forward
           TargetGroupArn: !Ref GeneratorTargetGroup
+
+  PortalListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Condition: HasPortalDomain
+    Properties:
+      ListenerArn: !Ref AuditListener
+      Priority: 20
+      Conditions:
+        - Field: host-header
+          HostHeaderConfig:
+            Values:
+              - !Ref PortalDomain
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref AuditTargetGroup
 
   # Routes a custom producer hostname on port 80 to the generator target group.
   # Enables Cloudflare proxy (which blocks port 5001) to front the generator UI.
