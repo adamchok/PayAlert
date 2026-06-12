@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Full setup for payalert-producer-ec2 (transaction generator + web UI).
-# Automates DEPLOYMENT.md Steps 5.1 – 6.2. Safe to re-run (idempotent).
+# Runs automatically via EC2 UserData on first boot, and is safe to re-run (idempotent).
 #
 # Run on the instance via SSM Session Manager after running `bash`:
 #
@@ -15,7 +15,7 @@
 #   ACCOUNT_ID       Your 12-digit AWS account ID
 #   UI_USERNAME      Username for the generator web UI login
 #   UI_PASSWORD      Password for the generator web UI login
-#   GITHUB_USERNAME  GitHub username (SSH key must already be added to GitHub)
+#   GITHUB_USERNAME  GitHub username or org that owns the public PayAlert repo
 #
 # Optional env vars:
 #   ENVIRONMENT      Deployment environment suffix for SQS queue name (default: dev)
@@ -80,7 +80,7 @@ if [[ -d "${REPO_DIR}/.git" ]]; then
     git -C "$REPO_DIR" pull
 else
     info "  Cloning PayAlert from GitHub..."
-    git clone "git@github.com:${GITHUB_USERNAME}/PayAlert.git" "$REPO_DIR"
+    git clone "https://github.com/${GITHUB_USERNAME}/PayAlert.git" "$REPO_DIR"
 fi
 info "  HEAD: $(git -C "$REPO_DIR" log -1 --format='%h %s')"
 

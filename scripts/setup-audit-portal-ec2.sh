@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Full setup for payalert-portal-ec2 (Next.js audit portal).
-# Automates DEPLOYMENT.md Steps 7.3 – 7.9. Safe to re-run (idempotent).
+# Runs automatically via EC2 UserData on first boot, and is safe to re-run (idempotent).
 #
 # Run on the instance via SSM Session Manager after running `bash`:
 #
 #   ACCOUNT_ID=123456789012 \
+#   PORTAL_USERNAME=admin \
 #   PORTAL_PASSWORD=YourStrongPassword \
 #   GITHUB_USERNAME=your-github-username \
 #   bash /opt/payalert-repo/scripts/setup-audit-portal-ec2.sh
@@ -13,7 +14,7 @@
 #   ACCOUNT_ID       Your 12-digit AWS account ID
 #   PORTAL_USERNAME  Username for the audit portal login
 #   PORTAL_PASSWORD  Password for the audit portal login
-#   GITHUB_USERNAME  GitHub username (SSH key must already be added to GitHub)
+#   GITHUB_USERNAME  GitHub username or org that owns the public PayAlert repo
 #
 # Optional env vars:
 #   ENVIRONMENT      Deployment environment suffix (default: dev) — controls table, queue, and DLQ names
@@ -72,7 +73,7 @@ if [[ -d "${REPO_DIR}/.git" ]]; then
     git -C "$REPO_DIR" pull
 else
     info "  Cloning PayAlert from GitHub..."
-    git clone "git@github.com:${GITHUB_USERNAME}/PayAlert.git" "$REPO_DIR"
+    git clone "https://github.com/${GITHUB_USERNAME}/PayAlert.git" "$REPO_DIR"
 fi
 info "  HEAD: $(git -C "$REPO_DIR" log -1 --format='%h %s')"
 

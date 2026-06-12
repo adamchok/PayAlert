@@ -41,6 +41,32 @@ Parameters:
       ACM certificate ARN for HTTPS on port 443. Leave empty for HTTP-only (lab default).
       When set, port 80 redirects to 443 and the audit portal is served over HTTPS.
 
+  GithubUsername:
+    Type: String
+    Description: >
+      GitHub username or organisation that owns the PayAlert repository.
+      Used to clone: https://github.com/<GithubUsername>/PayAlert.git
+
+  UiUsername:
+    Type: String
+    Default: payalert
+    Description: Username for the transaction generator web UI login.
+
+  UiPassword:
+    Type: String
+    NoEcho: true
+    Description: Password for the transaction generator web UI login.
+
+  PortalUsername:
+    Type: String
+    Default: admin
+    Description: Username for the audit portal login.
+
+  PortalPassword:
+    Type: String
+    NoEcho: true
+    Description: Password for the audit portal login.
+
 # ── Conditions ────────────────────────────────────────────────────────────────
 
 Conditions:
@@ -310,6 +336,9 @@ Resources:
 
   GeneratorInstance:
     Type: AWS::EC2::Instance
+    DependsOn:
+      - PrivateRoute
+      - PrivateSubnet1Association
     Properties:
       ImageId: !Ref UbuntuAmiId
       InstanceType: t3.micro
@@ -318,8 +347,17 @@ Resources:
         - !Ref EC2SecurityGroup
       IamInstanceProfile: !Ref InstanceProfileName
       UserData:
-        Fn::Base64: |
-          #!/bin/bash
+        Fn::Base64:
+          Fn::Sub: |
+            #!/bin/bash
+            exec >> /var/log/payalert-setup.log 2>&1
+            curl -fsSL https://raw.githubusercontent.com/${GithubUsername}/PayAlert/master/scripts/setup-generator-ec2.sh -o /tmp/setup-generator.sh
+            ACCOUNT_ID=${AWS::AccountId} \
+            ENVIRONMENT=${Environment} \
+            UI_USERNAME=${UiUsername} \
+            UI_PASSWORD=${UiPassword} \
+            GITHUB_USERNAME=${GithubUsername} \
+            bash /tmp/setup-generator.sh && echo "USERDATA_SUCCESS" >> /var/log/payalert-setup.log || echo "USERDATA_FAILED" >> /var/log/payalert-setup.log
       Tags:
         - Key: Name
           Value: payalert-producer-ec2
@@ -336,6 +374,9 @@ Resources:
 
   AuditInstance:
     Type: AWS::EC2::Instance
+    DependsOn:
+      - PrivateRoute
+      - PrivateSubnet2Association
     Properties:
       ImageId: !Ref UbuntuAmiId
       InstanceType: t3.large
@@ -344,8 +385,17 @@ Resources:
         - !Ref EC2SecurityGroup
       IamInstanceProfile: !Ref InstanceProfileName
       UserData:
-        Fn::Base64: |
-          #!/bin/bash
+        Fn::Base64:
+          Fn::Sub: |
+            #!/bin/bash
+            exec >> /var/log/payalert-setup.log 2>&1
+            curl -fsSL https://raw.githubusercontent.com/${GithubUsername}/PayAlert/master/scripts/setup-audit-portal-ec2.sh -o /tmp/setup-portal.sh
+            ACCOUNT_ID=${AWS::AccountId} \
+            ENVIRONMENT=${Environment} \
+            PORTAL_USERNAME=${PortalUsername} \
+            PORTAL_PASSWORD=${PortalPassword} \
+            GITHUB_USERNAME=${GithubUsername} \
+            bash /tmp/setup-portal.sh && echo "USERDATA_SUCCESS" >> /var/log/payalert-setup.log || echo "USERDATA_FAILED" >> /var/log/payalert-setup.log
       Tags:
         - Key: Name
           Value: payalert-portal-ec2

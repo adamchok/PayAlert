@@ -79,7 +79,7 @@ The infrastructure is split across three CloudFormation templates in `infra/`:
 |---|---|---|---|
 | `lambda-stack.yaml` | `payalert-stack` | Lambda, SQS, DynamoDB, SNS, CloudWatch alarms | Step 1 |
 | `network-stack.yaml` | `payalert-network-stack` | VPC, subnets, NAT, SSM endpoints, security groups, EC2 instances, ALB, target groups | Step 3 |
-| `asg-stack.yaml` | `payalert-asg-stack` | Launch Templates, ASGs (portal + producer), scaling policy | Step 9 (after AMIs are built) |
+| `asg-stack.yaml` | `payalert-asg-stack` | Launch Templates, ASGs (portal + producer), scaling policy | Step 8 (after AMIs are built) |
 
 All resources are tagged `Project: Capstone`, `Group: 4`, `Scenario: PayAlert`, and `Environment: dev`.
 
@@ -91,14 +91,19 @@ All resources are tagged `Project: Capstone`, `Group: 4`, `Scenario: PayAlert`, 
 | `WorkstationCidr` | Your public IP + `/32` — find it at [whatismyip.com](https://www.whatismyip.com) |
 | `UbuntuAmiId` | Ubuntu Server 26.04 LTS AMI ID for us-east-1 — find in EC2 → AMIs → Public images |
 | `InstanceProfileName` | `LabInstanceProfile` (Learner Labs default) |
+| `GithubUsername` | Your GitHub username or the org that owns the public PayAlert repo |
+| `UiUsername` | Username for the generator web UI (default: `payalert`) |
+| `UiPassword` | Password for the generator web UI |
+| `PortalUsername` | Username for the audit portal (default: `admin`) |
+| `PortalPassword` | Password for the audit portal |
 
 **Parameters required for `asg-stack.yaml`:**
 
 | Parameter | Value |
 |---|---|
 | `Environment` | `dev` |
-| `PortalAmiId` | AMI ID of `payalert-portal-ami` — built in Step 9.1 from `payalert-portal-ec2` |
-| `ProducerAmiId` | AMI ID of `payalert-producer-ami` — built in Step 9.1 from `payalert-producer-ec2` |
+| `PortalAmiId` | AMI ID of `payalert-portal-ami` — built in Step 8.1 from `payalert-portal-ec2` |
+| `ProducerAmiId` | AMI ID of `payalert-producer-ami` — built in Step 8.1 from `payalert-producer-ec2` |
 | `InstanceProfileName` | `LabInstanceProfile` |
 
 > The network stack exports VPC, subnet, security group, and target group values that the ASG stack imports automatically — no manual copy-paste between stacks.
@@ -294,6 +299,11 @@ Port 5001 (generator UI) on the ALB is restricted to your IP only.
 | `WorkstationCidr` | Your IP + `/32` from step 3.2, e.g. `203.0.113.5/32` |
 | `UbuntuAmiId` | AMI ID from step 3.1 |
 | `InstanceProfileName` | `LabInstanceProfile` |
+| `GithubUsername` | Your GitHub username or the org that owns the public PayAlert repo |
+| `UiUsername` | Username for the generator web UI (default: `payalert`) |
+| `UiPassword` | Password for the generator web UI |
+| `PortalUsername` | Username for the audit portal (default: `admin`) |
+| `PortalPassword` | Password for the audit portal |
 
 5. **Next** → **Next** → **Submit**.
 
@@ -308,7 +318,7 @@ Wait for status **CREATE_COMPLETE** (~3–5 minutes). This creates the VPC, subn
 |---|---|
 | `ProducerInstanceId` | Step 4.2 — connect to the producer EC2 |
 | `PortalInstanceId` | Step 7.1 — connect to the audit portal EC2 |
-| `AlbDnsName` | Steps 10.3–10.4 — access the applications |
+| `AlbDnsName` | Steps 8.3, 9.3–9.4 — verify ALB and smoke test |
 
 ---
 
@@ -341,85 +351,15 @@ SSM drops you into a restricted shell by default. Running `bash` gives you a ful
 
 ---
 
-## Step 5 — Set up the transaction generator
+## Step 5 — Verify the transaction generator
 
-All commands in this section run **on the EC2 instance** (via the SSM Session Manager browser session) unless noted otherwise.
-
-### 5.1 Set up SSH for GitHub (first time only)
-
-**1. Fork the repository**
-
-If you have not already, fork PayAlert to your own GitHub account: open the repo → **Fork** → **Create fork**.
-
-**2. Generate an SSH key on the EC2 instance**
+The setup script runs automatically via EC2 UserData when the network stack is deployed — no manual steps required. EC2 status checks turning green does **not** mean setup is done; UserData runs after the OS boots. Wait ~5 minutes after the stack reaches **CREATE_COMPLETE**, then confirm via SSM:
 
 ```bash
-ssh-keygen -t ed25519 -C "your@email.com"
-cat ~/.ssh/id_ed25519.pub
+tail -5 /var/log/payalert-setup.log   # last line must be USERDATA_SUCCESS
 ```
 
-Copy the output.
-
-**3. Add the key as a Deploy Key on your fork**
-
-In your forked repo on GitHub: **Settings** → **Security and quality** → **Deploy keys** → **Add deploy key**
-
-| Field | Value |
-|---|---|
-| Title | `payalert-producer-ec2` |
-| Key | paste the `id_ed25519.pub` output |
-| Allow write access | ☐ leave unchecked (read-only is sufficient) |
-
-Click **Add key**.
-
-**4. Accept GitHub's host key**
-
-```bash
-ssh -T git@github.com
-```
-
-Type `yes` when prompted. You will see `Hi <username>! You've successfully authenticated`.
-
-> Do **not** use `sudo git clone` — root does not have the SSH key and will get `Permission denied (publickey)`.
-
-### 5.2 Run the setup script
-
-Replace the values below with your own, then run:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/<your-username>/PayAlert/master/scripts/setup-generator-ec2.sh -o /tmp/setup-generator.sh && \
-ACCOUNT_ID=123456789012 \
-ENVIRONMENT=dev \
-UI_USERNAME=payalert \
-UI_PASSWORD=YourStrongPassword \
-GITHUB_USERNAME=your-github-username \
-bash /tmp/setup-generator.sh
-```
-
-> **Note:** `bash <(curl ...)` process substitution is blocked in SSM sessions. Always download to `/tmp` first.
-
-Or, if you have already cloned the repo manually:
-
-```bash
-ACCOUNT_ID=123456789012 \
-ENVIRONMENT=dev \
-UI_USERNAME=payalert \
-UI_PASSWORD=YourStrongPassword \
-GITHUB_USERNAME=your-github-username \
-bash /opt/payalert-repo/scripts/setup-generator-ec2.sh
-```
-
-The script:
-1. Verifies/installs python3, python3-full (required on Ubuntu 26.04), git
-2. Clones the repo to `/opt/payalert-repo`
-3. Deploys `transaction-generator` to `/opt/payalert/transaction-generator`
-4. Creates the Python virtualenv and installs dependencies
-5. Writes `/opt/payalert/generator.env`
-6. Installs and starts the `payalert-portal` systemd service
-
-`ACCOUNT_ID` is your 12-digit AWS account ID. `ENVIRONMENT` controls the SQS queue name suffix (default: `dev`) — set to `staging` or `prod` to match your deployment. Add `FORCE_ENV=1` to overwrite an existing `generator.env`. `AWS_REGION` defaults to `us-east-1`. To override the constructed SQS URL entirely, pass `SQS_QUEUE_URL` explicitly.
-
-### 5.3 Verify the service and run a quick test
+### 5.1 Verify the service and run a quick test
 
 ```bash
 sudo systemctl status payalert-portal
@@ -444,15 +384,17 @@ The web UI is already running as part of the `payalert-portal` service started i
 sudo journalctl -u payalert-portal -f
 ```
 
-You should see `* Running on http://0.0.0.0:5001`. The UI will be accessible through the ALB after Step 8.
+You should see `* Running on http://0.0.0.0:5001`. The UI will be accessible through the ALB after Step 8.3.
 
 ---
 
-## Step 7 — Set up the audit portal
+## Step 7 — Verify the audit portal
 
-The audit portal is a Next.js 16 app that reads from DynamoDB and gives fraud analysts a live dashboard. It runs on a **dedicated** EC2 instance (`payalert-portal-ec2`) so the heavier Node.js workload does not compete with the transaction generator on `payalert-producer-ec2`.
+The setup script runs automatically via EC2 UserData when the network stack is deployed. EC2 status checks turning green does **not** mean setup is done. The portal build (`npm ci && npm run build`) takes 3–8 minutes after the OS boots — total ~10–12 minutes after stack `CREATE_COMPLETE`. Confirm via SSM before proceeding:
 
-All commands in this section run **on `payalert-portal-ec2`** (via SSM Session Manager) unless noted otherwise.
+```bash
+tail -5 /var/log/payalert-setup.log   # last line must be USERDATA_SUCCESS
+```
 
 ### 7.1 Connect to `payalert-portal-ec2`
 
@@ -464,61 +406,7 @@ All commands in this section run **on `payalert-portal-ec2`** (via SSM Session M
 
 After connecting, run `bash` for a full shell.
 
-### 7.2 Set up SSH for GitHub (first time only)
-
-Same flow as Step 5.1, but use a different key title so GitHub can distinguish the two instances.
-
-```bash
-ssh-keygen -t ed25519 -C "your@email.com"
-cat ~/.ssh/id_ed25519.pub
-```
-
-Add the output as a Deploy Key on your fork: **Settings** → **Security and quality** → **Deploy keys** → **Add deploy key** (title: `payalert-portal-ec2`, write access unchecked).
-
-```bash
-ssh -T git@github.com   # type yes to accept fingerprint
-```
-
-### 7.3 Run the setup script
-
-Replace the values below with your own, then run:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/<your-username>/PayAlert/master/scripts/setup-audit-portal-ec2.sh -o /tmp/setup-portal.sh && \
-ACCOUNT_ID=123456789012 \
-ENVIRONMENT=dev \
-PORTAL_USERNAME=admin \
-PORTAL_PASSWORD=YourStrongPassword \
-GITHUB_USERNAME=your-github-username \
-bash /tmp/setup-portal.sh
-```
-
-> **Note:** `bash <(curl ...)` process substitution is blocked in SSM sessions. Always download to `/tmp` first.
-
-Or, if you have already cloned the repo manually:
-
-```bash
-ACCOUNT_ID=123456789012 \
-ENVIRONMENT=dev \
-PORTAL_USERNAME=admin \
-PORTAL_PASSWORD=YourStrongPassword \
-GITHUB_USERNAME=your-github-username \
-bash /opt/payalert-repo/scripts/setup-audit-portal-ec2.sh
-```
-
-The script:
-1. Verifies/installs Node.js 20, git
-2. Clones the repo to `/opt/payalert-repo`
-3. Deploys `audit-portal-v2` to `/opt/payalert/audit-portal-v2`
-4. Writes `.env.local` (auto-generates `AUTH_SECRET` if not supplied)
-5. Runs `npm ci && npm run build` (1–5 minutes)
-6. Installs and starts the `payalert-audit-portal` systemd service
-
-`ACCOUNT_ID` is your 12-digit AWS account ID. `ENVIRONMENT` controls the DynamoDB table name, SQS queue, and DLQ suffix (default: `dev`) — set to `staging` or `prod` to match your deployment. Add `FORCE_ENV=1` to overwrite an existing `.env.local`. `AWS_REGION` defaults to `us-east-1`.
-
-> **ASG note:** If you plan to use multiple instances behind the ASG, generate `AUTH_SECRET` once with `openssl rand -base64 32` and pass the same value to all instances so sessions stay valid across targets.
-
-### 7.4 Verify the service
+### 7.2 Verify the service
 
 ```bash
 sudo systemctl status payalert-audit-portal
@@ -528,41 +416,17 @@ sudo journalctl -u payalert-audit-portal -f
 curl -s http://localhost:3000 | head -5
 ```
 
-You should see HTML. The portal will be accessible through the ALB after Step 8.
+You should see HTML. The portal will be accessible through the ALB after Step 8.3.
 
 ---
 
-## Step 8 — Verify the ALB and target groups
-
-The ALB (`payalert-alb`), both target groups (`payalert-audit-tg` on port 3000 and `payalert-generator-tg` on port 5001), and both listeners (port 80 → audit portal, port 5001 → generator UI) were all created by the network stack in Step 3.
-
-### 8.1 Get the ALB DNS name
-
-1. **CloudFormation** → **Stacks** → `payalert-network-stack` → **Outputs** tab.
-2. Copy **`AlbDnsName`** — this is the base URL for both applications (e.g. `payalert-alb-123456789.us-east-1.elb.amazonaws.com`).
-
-### 8.2 Check target group health
-
-> **Skip for now — come back after Step 9.2.**
-> Target groups are intentionally empty at this stage. Instances are registered automatically by the ASG stack (Step 9), not by the EC2 setup steps. The ALB will return 502 until the ASG registers healthy targets.
-
-Once Step 9 is complete, verify here:
-
-1. **[EC2 Console](https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#TargetGroups:)** → **Target Groups**.
-2. Select `payalert-audit-tg` → **Targets** tab → wait for **Healthy** status.
-3. Select `payalert-generator-tg` → **Targets** tab → wait for **Healthy** status.
-
-Target registration and health checks can take 1–3 minutes after the ASG instances launch.
-
----
-
-## Step 9 — Create the Launch Templates and Auto Scaling Groups
+## Step 8 — Create the Launch Templates and Auto Scaling Groups
 
 The ASG stack provisions **two** ASGs: one for the audit portal and one for the transaction producer. Both are deployed from AMI snapshots of their respective configured instances — ensuring ASG instances start ready-to-run without any manual setup.
 
-> **Important:** Do **not** manually create Launch Templates or Auto Scaling groups through the EC2 Console. The CloudFormation stack in Step 9.2 creates them automatically.
+> **Important:** Do **not** manually create Launch Templates or Auto Scaling groups through the EC2 Console. The CloudFormation stack in Step 8.2 creates them automatically.
 
-### 9.1 Create AMIs from both instances
+### 8.1 Create AMIs from both instances
 
 **Portal AMI** (from `payalert-portal-ec2`):
 
@@ -588,9 +452,9 @@ The ASG stack provisions **two** ASGs: one for the audit portal and one for the 
 
 2. Wait for **Available** status.
 
-### 9.2 Deploy the ASG stack
+### 8.2 Deploy the ASG stack
 
-With both AMI IDs from step 9.1, deploy `infra/asg-stack.yaml`:
+With both AMI IDs from step 8.1, deploy `infra/asg-stack.yaml`:
 
 1. Open the **[CloudFormation Console](https://us-east-1.console.aws.amazon.com/cloudformation/home?region=us-east-1)** → **Create stack** → **With new resources (standard)**.
 2. **Template source:** Upload a template file → **Choose file** → select `infra/asg-stack.yaml` → **Next**.
@@ -618,17 +482,26 @@ This creates:
 
 **Why request count, not CPU?** The audit portal is I/O-bound: Next.js pages wait on DynamoDB queries, so CPU stays low even under real user load. ALB request count per target is the direct signal — each analyst generates ~12 requests/minute from the Live Audit 5-second polling loop plus additional page navigation. At 100 req/min per target, the portal can serve ~5 analysts comfortably on a single instance before scale-out triggers.
 
-### 9.3 Verify the target group health
+### 8.3 Verify the ALB and target groups
 
-1. **EC2** → **Target Groups** → `payalert-audit-tg` → **Targets** tab.
-2. Wait until **all registered targets** show **Healthy** (~2–3 minutes).
-3. Open `http://<ALB_DNS_NAME>` in a browser — the audit portal should load via the ALB.
+1. **CloudFormation** → **Stacks** → `payalert-network-stack` → **Outputs** tab.
+2. Copy **`AlbDnsName`** — this is the base URL for both applications (e.g. `payalert-alb-123456789.us-east-1.elb.amazonaws.com`).
+
+**Check target group health:**
+
+3. **[EC2 Console](https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#TargetGroups:)** → **Target Groups**.
+4. Select `payalert-audit-tg` → **Targets** tab → wait for **Healthy** status.
+5. Select `payalert-generator-tg` → **Targets** tab → wait for **Healthy** status.
+
+Target registration and health checks can take 1–3 minutes after the ASG instances launch.
+
+6. Open `http://<ALB_DNS_NAME>` in a browser — the audit portal should load via the ALB.
 
 ---
 
-## Step 10 — End-to-end smoke test
+## Step 9 — End-to-end smoke test
 
-### 10.1 Verify Lambda is processing
+### 9.1 Verify Lambda is processing
 
 1. **[CloudWatch Console](https://us-east-1.console.aws.amazon.com/cloudwatch/home?region=us-east-1#logsV2:log-groups)** → log group `/aws/lambda/payalert-transaction-processor-dev`.
 2. Select the most recent log stream.
@@ -638,18 +511,18 @@ This creates:
 Stored transaction=<uuid> account=ACC-MY-4F291A3B riskScore=12 riskLevel=LOW isFlagged=False
 ```
 
-### 10.2 Verify DynamoDB is being populated
+### 9.2 Verify DynamoDB is being populated
 
 **[DynamoDB Console](https://us-east-1.console.aws.amazon.com/dynamodbv2/home?region=us-east-1#tables)** → `payalert-transactions` → **Explore table items** — records should be visible and accumulating.
 
-### 10.3 Check the generator web UI
+### 9.3 Check the generator web UI
 
 Open `http://<ALB_DNS_NAME>:5001` in a browser.
 
 - The browser prompts for a username and password — enter the `UI_USERNAME` and `UI_PASSWORD` from Step 5.2.
 - Click **Start** to begin streaming transactions; live logs appear in the browser.
 
-### 10.4 Check the audit portal via ALB
+### 9.4 Check the audit portal via ALB
 
 Open `http://<ALB_DNS_NAME>` in a browser.
 
@@ -658,7 +531,7 @@ Open `http://<ALB_DNS_NAME>` in a browser.
 - Click **Transactions** to see the full filtered list.
 - Click **Dead Letter Queue** to see failed messages with Redrive / Delete actions.
 
-### 10.5 Trigger a fraud alert email
+### 9.5 Trigger a fraud alert email
 
 **[SQS Console](https://us-east-1.console.aws.amazon.com/sqs/v3/home?region=us-east-1#/queues)** → `payalert-transactions-queue-dev` → **Send and receive messages** → paste the following JSON and click **Send message**:
 
@@ -702,7 +575,7 @@ Within 30 seconds:
 - The transaction appears on the audit portal dashboard highlighted in red.
 - You receive a `[PayAlert] CRITICAL Risk` email at the address set during stack deployment.
 
-### 10.6 Verify the DLQ is empty
+### 9.6 Verify the DLQ is empty
 
 Normal operation should produce zero DLQ messages.
 
@@ -710,7 +583,7 @@ Normal operation should produce zero DLQ messages.
 
 ---
 
-## Step 11 — Run in fraud mode
+## Step 10 — Run in fraud mode
 
 To generate a higher volume of flagged transactions for audit portal demonstrations:
 
@@ -899,8 +772,10 @@ SQS_QUEUE_URL=<from Step 1.6> UI_USERNAME=payalert UI_PASSWORD=<your password> G
 bash /opt/payalert-repo/scripts/setup-generator-ec2.sh
 
 # On payalert-portal-ec2 (audit portal)
-ACCOUNT_ID=<your 12-digit ID> PORTAL_USERNAME=admin PORTAL_PASSWORD=<your password> DYNAMODB_TABLE=payalert-transactions-dev GITHUB_USERNAME=<username> \
+ACCOUNT_ID=<your 12-digit ID> PORTAL_USERNAME=admin PORTAL_PASSWORD=<your password> GITHUB_USERNAME=<username> \
 bash /opt/payalert-repo/scripts/setup-audit-portal-ec2.sh
 ```
 
-After rebuilding the audit portal, create a new AMI from `payalert-portal-ec2` (Step 9.1) and update the `payalert-asg-stack` with the new `PortalAmiId` so ASG instances get the latest build.
+> The repo is public — HTTPS clone requires no credentials. If the repo directory is missing, the script re-clones automatically.
+
+After rebuilding the audit portal, create a new AMI from `payalert-portal-ec2` (Step 8.1) and update the `payalert-asg-stack` with the new `PortalAmiId` so ASG instances get the latest build.
