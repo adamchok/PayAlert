@@ -120,7 +120,7 @@ Prints `transactionId`, `riskLevel`, `riskScore`, and `accountId` for every item
 | `TTL_DAYS` | `90` | Transaction expiry in days |
 | `AWS_ACCESS_KEY_ID` | `local` | Dummy value accepted by DynamoDB Local |
 | `AWS_SECRET_ACCESS_KEY` | `local` | Dummy value accepted by DynamoDB Local |
-| `AWS_DEFAULT_REGION` | `ap-southeast-1` | Region (affects table ARN construction) |
+| `AWS_DEFAULT_REGION` | `us-east-1` | Region (affects table ARN construction) |
 
 You can override any of these by setting the environment variable before running `invoke_local.py`:
 

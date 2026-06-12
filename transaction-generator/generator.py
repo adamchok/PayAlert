@@ -6,7 +6,7 @@ SQS pipeline. Supports continuous streaming, fixed-batch, and dry-run modes,
 with configurable fraud-scenario injection.
 
 Environment Variables:
-    AWS_REGION       – Target AWS region          (default: ap-southeast-1)
+    AWS_REGION       – Target AWS region          (default: us-east-1)
     SQS_QUEUE_URL    – SQS queue endpoint URL      (required unless --dry-run)
     MIN_INTERVAL     – Min seconds between bursts  (default: 0.1)
     MAX_INTERVAL     – Max seconds between bursts  (default: 2.0)
@@ -37,7 +37,7 @@ MYT = timezone(timedelta(hours=8))  # Malaysia Time (UTC+8)
 
 # ── Defaults (overridden by env / CLI) ───────────────────────────────────────
 
-AWS_REGION    = os.getenv("AWS_REGION",       "ap-southeast-1")
+AWS_REGION    = os.getenv("AWS_REGION",       "us-east-1")
 SQS_QUEUE_URL = os.getenv("SQS_QUEUE_URL",    "")
 MIN_INTERVAL  = float(os.getenv("MIN_INTERVAL",    "0.1"))
 MAX_INTERVAL  = float(os.getenv("MAX_INTERVAL",    "2.0"))
@@ -796,7 +796,7 @@ Examples:
   python generator.py
 
   # Stream with explicit queue URL and slower pace:
-  python generator.py --queue-url https://sqs.ap-southeast-1.amazonaws.com/123/queue \\
+  python generator.py --queue-url https://sqs.us-east-1.amazonaws.com/123/queue \\
                       --min-interval 1.0 --max-interval 5.0
 
   # Generate 50 transactions for a specific account without sending:
@@ -813,7 +813,7 @@ Examples:
     parser.add_argument("--queue-url",    default=SQS_QUEUE_URL,
                         help="SQS queue URL (env: SQS_QUEUE_URL)")
     parser.add_argument("--region",       default=AWS_REGION,
-                        help="AWS region (env: AWS_REGION, default: ap-southeast-1)")
+                        help="AWS region (env: AWS_REGION, default: us-east-1)")
     parser.add_argument("--min-interval", type=float, default=MIN_INTERVAL,
                         help="Min seconds between bursts in stream mode (default: 0.1)")
     parser.add_argument("--max-interval", type=float, default=MAX_INTERVAL,

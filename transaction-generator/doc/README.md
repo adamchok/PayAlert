@@ -139,7 +139,7 @@ Set the following environment variables (or pass as CLI flags):
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `SQS_QUEUE_URL` | Yes (unless `--dry-run`) | — | Full SQS queue endpoint URL |
-| `AWS_REGION` | No | `ap-southeast-1` | AWS region |
+| `AWS_REGION` | No | `us-east-1` | AWS region |
 | `MIN_INTERVAL` | No | `0.1` | Minimum seconds between bursts |
 | `MAX_INTERVAL` | No | `2.0` | Maximum seconds between bursts |
 | `BURST_SIZE_MIN` | No | `1` | Minimum transactions per burst |
@@ -228,7 +228,7 @@ The generator sends messages to SQS. The EC2 instance must carry an IAM role wit
         "sqs:SendMessageBatch",
         "sqs:GetQueueAttributes"
       ],
-      "Resource": "arn:aws:sqs:ap-southeast-1:*:payalert-transactions-queue-*"
+      "Resource": "arn:aws:sqs:us-east-1:*:payalert-transactions-queue-*"
     }
   ]
 }
@@ -240,7 +240,7 @@ The generator sends messages to SQS. The EC2 instance must carry an IAM role wit
 
 ### Step 2 — Launch the EC2 instance
 
-1. Open the **[EC2 Console](https://ap-southeast-1.console.aws.amazon.com/ec2/home?region=ap-southeast-1#LaunchInstances:)** → **Launch instances**.
+1. Open the **[EC2 Console](https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#LaunchInstances:)** → **Launch instances**.
 2. Configure the instance:
 
 | Setting | Value |
@@ -308,14 +308,14 @@ When running via systemd later, use the venv Python path in `ExecStart`:
 
 Retrieve the `TransactionQueueUrl` from the Lambda stack:
 
-1. Open the **[CloudFormation Console](https://ap-southeast-1.console.aws.amazon.com/cloudformation/home?region=ap-southeast-1)**.
+1. Open the **[CloudFormation Console](https://us-east-1.console.aws.amazon.com/cloudformation/home?region=us-east-1)**.
 2. Click `payalert` → **Outputs** tab → copy `TransactionQueueUrl`.
 
 Create the environment file on the instance:
 
 ```bash
 sudo tee /opt/payalert/generator.env <<’EOF’
-AWS_REGION=ap-southeast-1
+AWS_REGION=us-east-1
 SQS_QUEUE_URL=<paste TransactionQueueUrl from CloudFormation Outputs>
 EOF
 sudo chmod 600 /opt/payalert/generator.env
@@ -336,7 +336,7 @@ Confirms SQS permissions and queue URL before you background the process:
 
 ```bash
 cd /opt/payalert/transaction-generator
-export AWS_REGION=ap-southeast-1
+export AWS_REGION=us-east-1
 export SQS_QUEUE_URL="<paste TransactionQueueUrl from CloudFormation Outputs>"
 python3 generator.py --verbose
 ```
@@ -349,7 +349,7 @@ Use this when you want the default behaviour (random bursts to SQS every `MIN_IN
 
 ```bash
 cd /opt/payalert/transaction-generator
-export AWS_REGION=ap-southeast-1
+export AWS_REGION=us-east-1
 export SQS_QUEUE_URL="<paste TransactionQueueUrl from CloudFormation Outputs>"
 
 nohup python3 generator.py \

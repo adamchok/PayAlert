@@ -8,7 +8,7 @@ import pytest
 from moto import mock_aws
 
 # Configure fake AWS credentials before any imports touch boto3
-os.environ.setdefault("AWS_DEFAULT_REGION", "ap-southeast-1")
+os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 os.environ.setdefault("AWS_ACCESS_KEY_ID", "testing")
 os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "testing")
 os.environ.setdefault("AWS_SECURITY_TOKEN", "testing")
@@ -18,7 +18,7 @@ TABLE_NAME = "payalert-transactions-test"
 TOPIC_NAME = "payalert-alerts-test"
 
 
-def create_test_table(region: str = "ap-southeast-1"):
+def create_test_table(region: str = "us-east-1"):
     """Create the DynamoDB test table (call inside an active mock_aws context)."""
     client = boto3.client("dynamodb", region_name=region)
     client.create_table(
@@ -69,7 +69,7 @@ def aws_credentials():
     os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
     os.environ["AWS_SECURITY_TOKEN"] = "testing"
     os.environ["AWS_SESSION_TOKEN"] = "testing"
-    os.environ["AWS_DEFAULT_REGION"] = "ap-southeast-1"
+    os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
 
 
 @pytest.fixture
@@ -136,8 +136,8 @@ def make_sqs_event(transactions: list[dict]) -> dict:
                 "messageAttributes": {},
                 "md5OfBody": "",
                 "eventSource": "aws:sqs",
-                "eventSourceARN": "arn:aws:sqs:ap-southeast-1:123456789012:payalert-test",
-                "awsRegion": "ap-southeast-1",
+                "eventSourceARN": "arn:aws:sqs:us-east-1:123456789012:payalert-test",
+                "awsRegion": "us-east-1",
             }
             for i, tx in enumerate(transactions)
         ]

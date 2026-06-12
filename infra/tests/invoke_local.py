@@ -21,7 +21,7 @@ os.environ.setdefault("TTL_DAYS",                  "90")
 os.environ.setdefault("AWS_ENDPOINT_URL_DYNAMODB", "http://localhost:8000")
 os.environ.setdefault("AWS_ACCESS_KEY_ID",         "local")
 os.environ.setdefault("AWS_SECRET_ACCESS_KEY",     "local")
-os.environ.setdefault("AWS_DEFAULT_REGION",        "ap-southeast-1")
+os.environ.setdefault("AWS_DEFAULT_REGION",        "us-east-1")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "transaction-processor"))
 import handler  # noqa: E402 — env vars must be set before this import

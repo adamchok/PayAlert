@@ -28,8 +28,8 @@ The instance needs permission to query DynamoDB. You'll attach this role at laun
         "dynamodb:Query"
       ],
       "Resource": [
-        "arn:aws:dynamodb:ap-southeast-1:YOUR_ACCOUNT_ID:table/payalert-transactions",
-        "arn:aws:dynamodb:ap-southeast-1:YOUR_ACCOUNT_ID:table/payalert-transactions/index/*"
+        "arn:aws:dynamodb:us-east-1:YOUR_ACCOUNT_ID:table/payalert-transactions",
+        "arn:aws:dynamodb:us-east-1:YOUR_ACCOUNT_ID:table/payalert-transactions/index/*"
       ]
     }
   ]
@@ -113,7 +113,7 @@ On the EC2 instance, create `.env.local` in the project directory:
 ```bash
 cat > /home/ubuntu/audit-portal-v2/.env.local << 'EOF'
 DYNAMODB_TABLE=payalert-transactions
-AWS_REGION=ap-southeast-1
+AWS_REGION=us-east-1
 NEXT_PUBLIC_ENVIRONMENT=prod
 EOF
 ```
@@ -265,6 +265,6 @@ EC2 Security Group (port 80/443)
 Nginx :80  ──proxy──►  Next.js (PM2) :3000
                               │
                               ▼
-                    AWS DynamoDB (ap-southeast-1)
+                    AWS DynamoDB (us-east-1)
                     via IAM Instance Role (no keys)
 ```

@@ -153,8 +153,8 @@ Save this as `infra/tests/sample_event.json`:
       "messageAttributes": {},
       "md5OfBody": "",
       "eventSource": "aws:sqs",
-      "eventSourceARN": "arn:aws:sqs:ap-southeast-1:123456789012:payalert-transactions-queue-dev",
-      "awsRegion": "ap-southeast-1"
+      "eventSourceARN": "arn:aws:sqs:us-east-1:123456789012:payalert-transactions-queue-dev",
+      "awsRegion": "us-east-1"
     }
   ]
 }
@@ -172,7 +172,7 @@ DYNAMODB_TABLE=payalert-transactions-dev \
 ALERT_TOPIC_ARN="" \
 ALERT_RISK_THRESHOLD=50 \
 TTL_DAYS=90 \
-AWS_DEFAULT_REGION=ap-southeast-1 \
+AWS_DEFAULT_REGION=us-east-1 \
 python3 -c "
 import os, json, sys
 os.environ['DYNAMODB_TABLE'] = 'payalert-transactions-dev'
@@ -215,7 +215,7 @@ pip install -r requirements.txt
 ```bash
 DYNAMODB_TABLE=payalert-transactions-dev \
 ENVIRONMENT=dev \
-AWS_REGION=ap-southeast-1 \
+AWS_REGION=us-east-1 \
 FLASK_DEBUG=true \
 python3 app.py
 ```
@@ -311,23 +311,23 @@ Save this as `infra/tests/local-batch-event.json`. It contains five transactions
 {
   "Records": [
     {
-      "messageId": "local-001", "receiptHandle": "r1", "attributes": {}, "messageAttributes": {}, "md5OfBody": "", "eventSource": "aws:sqs", "eventSourceARN": "arn:aws:sqs:ap-southeast-1:000000000000:local", "awsRegion": "ap-southeast-1",
+      "messageId": "local-001", "receiptHandle": "r1", "attributes": {}, "messageAttributes": {}, "md5OfBody": "", "eventSource": "aws:sqs", "eventSourceARN": "arn:aws:sqs:us-east-1:000000000000:local", "awsRegion": "us-east-1",
       "body": "{\"transactionId\":\"local-0000-0000-0000-000000000001\",\"accountId\":\"ACC-MY-4F291A3B\",\"amount\":45.50,\"currency\":\"MYR\",\"timestamp\":\"2026-05-11T09:15:00+0800\",\"merchantId\":\"MER-LSS-0001\",\"transactionType\":\"PURCHASE\",\"referenceId\":\"PAY-LOCAL-001\",\"description\":\"Contactless payment at Lotus's Supermarket\",\"channel\":\"CONTACTLESS\",\"merchantName\":\"Lotus's Supermarket\",\"merchantCategory\":\"GROCERY\",\"merchantCity\":\"Kuala Lumpur\",\"merchantState\":\"Wilayah Persekutuan\",\"merchantCountry\":\"MY\",\"customerId\":\"CUST-4F291A3B\",\"customerName\":\"Ahmad Farid bin Ismail\",\"customerTier\":\"GOLD\",\"cardLast4\":\"4821\",\"cardType\":\"VISA_DEBIT\",\"location\":{\"city\":\"Kuala Lumpur\",\"state\":\"Wilayah Persekutuan\",\"country\":\"MY\"},\"exchangeRate\":1.0,\"amountMYR\":45.50,\"riskScore\":5,\"riskLevel\":\"LOW\",\"riskFlags\":[],\"isFlagged\":false,\"flagReason\":null,\"generatorVersion\":\"2.0.0\"}"
     },
     {
-      "messageId": "local-002", "receiptHandle": "r2", "attributes": {}, "messageAttributes": {}, "md5OfBody": "", "eventSource": "aws:sqs", "eventSourceARN": "arn:aws:sqs:ap-southeast-1:000000000000:local", "awsRegion": "ap-southeast-1",
+      "messageId": "local-002", "receiptHandle": "r2", "attributes": {}, "messageAttributes": {}, "md5OfBody": "", "eventSource": "aws:sqs", "eventSourceARN": "arn:aws:sqs:us-east-1:000000000000:local", "awsRegion": "us-east-1",
       "body": "{\"transactionId\":\"local-0000-0000-0000-000000000002\",\"accountId\":\"ACC-MY-7C8D1E4F\",\"amount\":1200.00,\"currency\":\"MYR\",\"timestamp\":\"2026-05-11T11:42:00+0800\",\"merchantId\":\"MER-AIR-0001\",\"transactionType\":\"PURCHASE\",\"referenceId\":\"PAY-LOCAL-002\",\"description\":\"AirAsia flight booking\",\"channel\":\"ONLINE\",\"merchantName\":\"AirAsia\",\"merchantCategory\":\"AIRLINE\",\"merchantCity\":\"Kuala Lumpur\",\"merchantState\":\"Wilayah Persekutuan\",\"merchantCountry\":\"MY\",\"customerId\":\"CUST-7C8D1E4F\",\"customerName\":\"Nurul Ain binti Razak\",\"customerTier\":\"PLATINUM\",\"cardLast4\":\"9923\",\"cardType\":\"MASTERCARD_CREDIT\",\"location\":{\"city\":\"Kuala Lumpur\",\"state\":\"Wilayah Persekutuan\",\"country\":\"MY\"},\"exchangeRate\":1.0,\"amountMYR\":1200.00,\"riskScore\":30,\"riskLevel\":\"MEDIUM\",\"riskFlags\":[\"ROUND_AMOUNT\"],\"isFlagged\":false,\"flagReason\":null,\"generatorVersion\":\"2.0.0\"}"
     },
     {
-      "messageId": "local-003", "receiptHandle": "r3", "attributes": {}, "messageAttributes": {}, "md5OfBody": "", "eventSource": "aws:sqs", "eventSourceARN": "arn:aws:sqs:ap-southeast-1:000000000000:local", "awsRegion": "ap-southeast-1",
+      "messageId": "local-003", "receiptHandle": "r3", "attributes": {}, "messageAttributes": {}, "md5OfBody": "", "eventSource": "aws:sqs", "eventSourceARN": "arn:aws:sqs:us-east-1:000000000000:local", "awsRegion": "us-east-1",
       "body": "{\"transactionId\":\"local-0000-0000-0000-000000000003\",\"accountId\":\"ACC-MY-2B5E9C1D\",\"amount\":4800.00,\"currency\":\"SGD\",\"timestamp\":\"2026-05-11T13:05:00+0800\",\"merchantId\":\"MER-ZAR-SG01\",\"transactionType\":\"PURCHASE\",\"referenceId\":\"PAY-LOCAL-003\",\"description\":\"Zara Singapore — online order\",\"channel\":\"ONLINE\",\"merchantName\":\"Zara\",\"merchantCategory\":\"APPAREL\",\"merchantCity\":\"Singapore\",\"merchantState\":\"Central Region\",\"merchantCountry\":\"SG\",\"customerId\":\"CUST-2B5E9C1D\",\"customerName\":\"Lim Wei Jian\",\"customerTier\":\"SILVER\",\"cardLast4\":\"3341\",\"cardType\":\"MASTERCARD_DEBIT\",\"location\":{\"city\":\"Singapore\",\"state\":\"Central Region\",\"country\":\"SG\"},\"exchangeRate\":3.50,\"amountMYR\":16800.00,\"riskScore\":65,\"riskLevel\":\"HIGH\",\"riskFlags\":[\"VERY_HIGH_AMOUNT\",\"CROSS_BORDER\",\"FOREIGN_CURRENCY\"],\"isFlagged\":true,\"flagReason\":\"VERY_HIGH_AMOUNT | CROSS_BORDER | FOREIGN_CURRENCY\",\"generatorVersion\":\"2.0.0\"}"
     },
     {
-      "messageId": "local-004", "receiptHandle": "r4", "attributes": {}, "messageAttributes": {}, "md5OfBody": "", "eventSource": "aws:sqs", "eventSourceARN": "arn:aws:sqs:ap-southeast-1:000000000000:local", "awsRegion": "ap-southeast-1",
+      "messageId": "local-004", "receiptHandle": "r4", "attributes": {}, "messageAttributes": {}, "md5OfBody": "", "eventSource": "aws:sqs", "eventSourceARN": "arn:aws:sqs:us-east-1:000000000000:local", "awsRegion": "us-east-1",
       "body": "{\"transactionId\":\"local-0000-0000-0000-000000000004\",\"accountId\":\"ACC-MY-4F291A3B\",\"amount\":9500.00,\"currency\":\"USD\",\"timestamp\":\"2026-05-11T02:30:00+0800\",\"merchantId\":\"ATM-CITI-US01\",\"transactionType\":\"WITHDRAWAL\",\"referenceId\":\"PAY-LOCAL-004\",\"description\":\"ATM cash withdrawal - New York, US\",\"channel\":\"ATM\",\"merchantName\":\"Citibank ATM (USA)\",\"merchantCategory\":\"ATM_WITHDRAWAL\",\"merchantCity\":\"New York\",\"merchantState\":\"New York\",\"merchantCountry\":\"US\",\"customerId\":\"CUST-4F291A3B\",\"customerName\":\"Ahmad Farid bin Ismail\",\"customerTier\":\"GOLD\",\"cardLast4\":\"4821\",\"cardType\":\"VISA_DEBIT\",\"location\":{\"city\":\"New York\",\"state\":\"New York\",\"country\":\"US\"},\"exchangeRate\":4.72,\"amountMYR\":44840.00,\"riskScore\":95,\"riskLevel\":\"CRITICAL\",\"riskFlags\":[\"VERY_HIGH_AMOUNT\",\"UNUSUAL_HOUR\",\"CROSS_BORDER\",\"INTERNATIONAL_ATM\",\"FOREIGN_CURRENCY\"],\"isFlagged\":true,\"flagReason\":\"VERY_HIGH_AMOUNT | UNUSUAL_HOUR | CROSS_BORDER | INTERNATIONAL_ATM | FOREIGN_CURRENCY\",\"generatorVersion\":\"2.0.0\",\"fraudScenario\":\"cross_border_atm\"}"
     },
     {
-      "messageId": "local-005", "receiptHandle": "r5", "attributes": {}, "messageAttributes": {}, "md5OfBody": "", "eventSource": "aws:sqs", "eventSourceARN": "arn:aws:sqs:ap-southeast-1:000000000000:local", "awsRegion": "ap-southeast-1",
+      "messageId": "local-005", "receiptHandle": "r5", "attributes": {}, "messageAttributes": {}, "md5OfBody": "", "eventSource": "aws:sqs", "eventSourceARN": "arn:aws:sqs:us-east-1:000000000000:local", "awsRegion": "us-east-1",
       "body": "{\"transactionId\":\"local-0000-0000-0000-000000000005\",\"accountId\":\"ACC-MY-9A6F2D8E\",\"amount\":32.00,\"currency\":\"MYR\",\"timestamp\":\"2026-05-11T12:10:00+0800\",\"merchantId\":\"MER-GRB-0001\",\"transactionType\":\"PURCHASE\",\"referenceId\":\"PAY-LOCAL-005\",\"description\":\"GrabFood delivery order\",\"channel\":\"MOBILE_APP\",\"merchantName\":\"GrabFood\",\"merchantCategory\":\"FOOD_DELIVERY\",\"merchantCity\":\"George Town\",\"merchantState\":\"Pulau Pinang\",\"merchantCountry\":\"MY\",\"customerId\":\"CUST-9A6F2D8E\",\"customerName\":\"Priya a/p Subramaniam\",\"customerTier\":\"GOLD\",\"cardLast4\":\"7712\",\"cardType\":\"VISA_CREDIT\",\"location\":{\"city\":\"George Town\",\"state\":\"Pulau Pinang\",\"country\":\"MY\"},\"exchangeRate\":1.0,\"amountMYR\":32.00,\"riskScore\":8,\"riskLevel\":\"LOW\",\"riskFlags\":[],\"isFlagged\":false,\"flagReason\":null,\"generatorVersion\":\"2.0.0\"}"
     }
   ]
@@ -381,7 +381,7 @@ source .venv/bin/activate   # create venv first if needed: python3 -m venv .venv
 AWS_ENDPOINT_URL=http://localhost:8000 \
 AWS_ACCESS_KEY_ID=local \
 AWS_SECRET_ACCESS_KEY=local \
-AWS_DEFAULT_REGION=ap-southeast-1 \
+AWS_DEFAULT_REGION=us-east-1 \
 DYNAMODB_TABLE=payalert-transactions-dev \
 ENVIRONMENT=dev \
 FLASK_DEBUG=true \
@@ -413,8 +413,8 @@ body = sys.stdin.read().strip()
 event = {'Records': [{'messageId': 'gen-001', 'receiptHandle': 'r',
   'body': body, 'attributes': {}, 'messageAttributes': {}, 'md5OfBody': '',
   'eventSource': 'aws:sqs',
-  'eventSourceARN': 'arn:aws:sqs:ap-southeast-1:000000000000:local',
-  'awsRegion': 'ap-southeast-1'}]}
+  'eventSourceARN': 'arn:aws:sqs:us-east-1:000000000000:local',
+  'awsRegion': 'us-east-1'}]}
 print(json.dumps(event))
 " > /tmp/gen-event.json
 
@@ -464,7 +464,7 @@ source .venv/bin/activate
 AWS_ENDPOINT_URL=http://localhost:8000 \
 AWS_ACCESS_KEY_ID=local \
 AWS_SECRET_ACCESS_KEY=local \
-AWS_DEFAULT_REGION=ap-southeast-1 \
+AWS_DEFAULT_REGION=us-east-1 \
 DYNAMODB_TABLE=payalert-transactions-dev \
 ENVIRONMENT=dev \
 FLASK_DEBUG=true \

@@ -11,7 +11,7 @@ All configuration comes from environment variables injected by Docker:
     TTL_DAYS                  90
     AWS_ACCESS_KEY_ID         local
     AWS_SECRET_ACCESS_KEY     local
-    AWS_DEFAULT_REGION        ap-southeast-1
+    AWS_DEFAULT_REGION        us-east-1
 """
 
 import json
@@ -47,8 +47,8 @@ def _invoke(tx: dict) -> None:
             "messageAttributes": {},
             "md5OfBody":         "",
             "eventSource":       "aws:sqs",
-            "eventSourceARN":    "arn:aws:sqs:ap-southeast-1:000000000000:local",
-            "awsRegion":         "ap-southeast-1",
+            "eventSourceARN":    "arn:aws:sqs:us-east-1:000000000000:local",
+            "awsRegion":         "us-east-1",
         }]
     }
     try:

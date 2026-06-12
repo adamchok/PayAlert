@@ -12,3 +12,7 @@
 
 # Ruff
 .ruff_cache/
+
+# Graphifyy
+graphify-out/
+.graphifyignore

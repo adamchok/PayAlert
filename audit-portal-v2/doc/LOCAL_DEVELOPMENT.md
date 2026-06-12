@@ -36,7 +36,7 @@ aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 **`~/.aws/config`**
 ```ini
 [default]
-region = ap-southeast-1
+region = us-east-1
 ```
 
 The SDK will pick these up automatically — no changes to `.env.local` needed.
@@ -51,7 +51,7 @@ AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 AWS_SESSION_TOKEN=AQoXnyc4lcK4w...   # only if using temporary/assumed-role credentials
 ```
 
-> **Note:** `AWS_REGION` is already set in `.env.local` to `ap-southeast-1`. Only add `AWS_SESSION_TOKEN` if your credentials are temporary (STS/assume-role).
+> **Note:** `AWS_REGION` is already set in `.env.local` to `us-east-1`. Only add `AWS_SESSION_TOKEN` if your credentials are temporary (STS/assume-role).
 
 ---
 
@@ -61,7 +61,7 @@ Your `.env.local` at the project root should look like this:
 
 ```bash
 DYNAMODB_TABLE=payalert-transactions
-AWS_REGION=ap-southeast-1
+AWS_REGION=us-east-1
 NEXT_PUBLIC_ENVIRONMENT=dev
 ```
 
@@ -116,8 +116,8 @@ The credentials you use locally need the following DynamoDB permissions on the `
     "dynamodb:Query"
   ],
   "Resource": [
-    "arn:aws:dynamodb:ap-southeast-1:*:table/payalert-transactions",
-    "arn:aws:dynamodb:ap-southeast-1:*:table/payalert-transactions/index/*"
+    "arn:aws:dynamodb:us-east-1:*:table/payalert-transactions",
+    "arn:aws:dynamodb:us-east-1:*:table/payalert-transactions/index/*"
   ]
 }
 ```

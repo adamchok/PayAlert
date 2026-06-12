@@ -170,7 +170,7 @@ The Lambda deployment package must be stored in S3 before CloudFormation can ref
 2. Click **Create bucket**.
 3. Configure the bucket:
    - **Bucket name**: `payalert-artifacts-{your-12-digit-account-id}` (must be globally unique; substitute your actual account ID)
-   - **AWS Region**: `ap-southeast-1`
+   - **AWS Region**: `us-east-1`
    - Leave all other settings at their defaults.
 4. Click **Create bucket**.
 
@@ -232,7 +232,7 @@ Save the file.
 
 ### Step 5 — Deploy via CloudFormation Console
 
-1. Open the **[CloudFormation Console](https://ap-southeast-1.console.aws.amazon.com/cloudformation/home?region=ap-southeast-1)**.
+1. Open the **[CloudFormation Console](https://us-east-1.console.aws.amazon.com/cloudformation/home?region=us-east-1)**.
 2. Click **Create stack** → **With new resources (standard)**.
 3. Under **Template source**, select **Upload a template file** → **Choose file** → select `infra/lambda-stack.yaml` → **Next**.
 4. Fill in the stack details:
@@ -257,14 +257,14 @@ The **Events** tab updates in real time. Wait for the stack status to reach **CR
 
 ### Step 6 — Retrieve the stack outputs
 
-1. Open the **[CloudFormation Console](https://ap-southeast-1.console.aws.amazon.com/cloudformation/home?region=ap-southeast-1)**.
+1. Open the **[CloudFormation Console](https://us-east-1.console.aws.amazon.com/cloudformation/home?region=us-east-1)**.
 2. Click the `payalert-dev` stack → **Outputs** tab.
 
 | Key | Example value |
 |---|---|
-| `TransactionQueueUrl` | `https://sqs.ap-southeast-1.amazonaws.com/123456789012/payalert-transactions-queue-dev` |
+| `TransactionQueueUrl` | `https://sqs.us-east-1.amazonaws.com/123456789012/payalert-transactions-queue-dev` |
 | `TransactionsTableName` | `payalert-transactions-dev` |
-| `AlertTopicArn` | `arn:aws:sns:ap-southeast-1:123456789012:payalert-alerts-dev` |
+| `AlertTopicArn` | `arn:aws:sns:us-east-1:123456789012:payalert-alerts-dev` |
 
 Keep the `TransactionQueueUrl` handy — it is needed when configuring the transaction generator.
 
@@ -276,7 +276,7 @@ AWS sends a confirmation email to `AlertEmail` immediately after deployment. Ope
 
 To verify the subscription status:
 
-1. Open the **[SNS Console](https://ap-southeast-1.console.aws.amazon.com/sns/v3/home?region=ap-southeast-1#/subscriptions)**.
+1. Open the **[SNS Console](https://us-east-1.console.aws.amazon.com/sns/v3/home?region=us-east-1#/subscriptions)**.
 2. Locate the subscription for `payalert-alerts-dev`.
 3. The **Status** column should show **Confirmed** (not `PendingConfirmation`).
 
@@ -350,7 +350,7 @@ All tests use [moto](https://docs.getmoto.org/) to mock AWS services in-process 
 
 ### Send a test transaction via the SQS Console
 
-1. Open the **[SQS Console](https://ap-southeast-1.console.aws.amazon.com/sqs/v3/home?region=ap-southeast-1#/queues)**.
+1. Open the **[SQS Console](https://us-east-1.console.aws.amazon.com/sqs/v3/home?region=us-east-1#/queues)**.
 2. Click `payalert-transactions-queue-dev` → **Send and receive messages**.
 3. Paste the JSON below into the **Message body** field and click **Send message**.
 
@@ -429,7 +429,7 @@ All tests use [moto](https://docs.getmoto.org/) to mock AWS services in-process 
 
 ### Verify the item was stored in DynamoDB
 
-1. Open the **[DynamoDB Console](https://ap-southeast-1.console.aws.amazon.com/dynamodbv2/home?region=ap-southeast-1#tables)**.
+1. Open the **[DynamoDB Console](https://us-east-1.console.aws.amazon.com/dynamodbv2/home?region=us-east-1#tables)**.
 2. Click `payalert-transactions-dev` → **Explore table items**.
 3. Under **Filters**, set:
    - Attribute: `transactionId`
@@ -441,7 +441,7 @@ The item should appear with `processedAt`, `datePartition`, and `ttl` fields add
 
 ### Invoke the Lambda directly with a test event
 
-1. Open the **[Lambda Console](https://ap-southeast-1.console.aws.amazon.com/infra/home?region=ap-southeast-1#/functions)**.
+1. Open the **[Lambda Console](https://us-east-1.console.aws.amazon.com/infra/home?region=us-east-1#/functions)**.
 2. Click `payalert-transaction-processor-dev` → **Test** tab.
 3. Create a new test event named `SQSTestEvent` with the following payload:
 
@@ -456,8 +456,8 @@ The item should appear with `processedAt`, `datePartition`, and `ttl` fields add
       "messageAttributes": {},
       "md5OfBody": "",
       "eventSource": "aws:sqs",
-      "eventSourceARN": "arn:aws:sqs:ap-southeast-1:123456789012:payalert-transactions-queue-dev",
-      "awsRegion": "ap-southeast-1"
+      "eventSourceARN": "arn:aws:sqs:us-east-1:123456789012:payalert-transactions-queue-dev",
+      "awsRegion": "us-east-1"
     }
   ]
 }
@@ -471,14 +471,14 @@ The item should appear with `processedAt`, `datePartition`, and `ttl` fields add
 
 ### Lambda logs (CloudWatch)
 
-1. Open the **[CloudWatch Console](https://ap-southeast-1.console.aws.amazon.com/cloudwatch/home?region=ap-southeast-1#logsV2:log-groups)**.
+1. Open the **[CloudWatch Console](https://us-east-1.console.aws.amazon.com/cloudwatch/home?region=us-east-1#logsV2:log-groups)**.
 2. Click log group `/aws/lambda/payalert-transaction-processor-dev`.
 3. Select a log stream to view recent invocation logs.
 4. To search across all streams, click **Search log group** and enter a filter pattern such as `isFlagged=True`.
 
 ### CloudWatch Alarms
 
-1. Open the **[CloudWatch Alarms Console](https://ap-southeast-1.console.aws.amazon.com/cloudwatch/home?region=ap-southeast-1#alarmsV2:)**.
+1. Open the **[CloudWatch Alarms Console](https://us-east-1.console.aws.amazon.com/cloudwatch/home?region=us-east-1#alarmsV2:)**.
 2. Search for `payalert` to see all three pipeline alarms:
 
 | Alarm | Triggers when |
@@ -489,14 +489,14 @@ The item should appear with `processedAt`, `datePartition`, and `ttl` fields add
 
 ### SQS queue depth
 
-1. Open the **[SQS Console](https://ap-southeast-1.console.aws.amazon.com/sqs/v3/home?region=ap-southeast-1#/queues)**.
+1. Open the **[SQS Console](https://us-east-1.console.aws.amazon.com/sqs/v3/home?region=us-east-1#/queues)**.
 2. Click `payalert-transactions-queue-dev`.
 3. The **Details** pane shows **Messages available** (visible) and **Messages in flight** (not visible).
 4. For DLQ depth, repeat with `payalert-transactions-dlq-dev` — this should read **0** during normal operation.
 
 ### DynamoDB metrics
 
-1. Open the **[DynamoDB Console](https://ap-southeast-1.console.aws.amazon.com/dynamodbv2/home?region=ap-southeast-1#tables)**.
+1. Open the **[DynamoDB Console](https://us-east-1.console.aws.amazon.com/dynamodbv2/home?region=us-east-1#tables)**.
 2. Click `payalert-transactions-dev` → **Monitor** tab for read/write capacity graphs.
 3. The **Overview** tab shows estimated item count and table size (updated approximately every 6 hours).
 
@@ -561,7 +561,7 @@ These are expected and benign. The Lambda uses an idempotent conditional put (`a
 | `ALERT_TOPIC_ARN` | No | `""` | SNS topic ARN; alerts disabled if empty |
 | `ALERT_RISK_THRESHOLD` | No | `50` | Min `riskScore` to trigger an alert |
 | `TTL_DAYS` | No | `90` | Days until DynamoDB TTL expiry |
-| `AWS_REGION` | No | `ap-southeast-1` | AWS region for boto3 clients |
+| `AWS_REGION` | No | `us-east-1` | AWS region for boto3 clients |
 
 To update a variable after deployment: Console: **Lambda** → `payalert-transaction-processor-dev` → **Configuration** → **Environment variables** → **Edit**.
 

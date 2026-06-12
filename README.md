@@ -146,13 +146,13 @@ python3 generator.py --dry-run                  # print to stdout, no SQS
 | `ALERT_TOPIC_ARN` | *(optional)* | SNS topic ARN; alerts disabled if empty |
 | `ALERT_RISK_THRESHOLD` | `50` | Minimum risk score to trigger an alert |
 | `TTL_DAYS` | `90` | Days before DynamoDB auto-expires a record |
-| `AWS_REGION` | `ap-southeast-1` | AWS region |
+| `AWS_REGION` | `us-east-1` | AWS region |
 
 ### Audit Portal (`.env.local`)
 
 ```env
 DYNAMODB_TABLE=payalert-transactions
-AWS_REGION=ap-southeast-1
+AWS_REGION=us-east-1
 NEXT_PUBLIC_ENVIRONMENT=prod
 ```
 

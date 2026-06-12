@@ -130,7 +130,7 @@ class TestAlertDispatch:
     def test_high_risk_transaction_publishes_alert(self):
         table = create_test_table()
 
-        sns_client = boto3.client("sns", region_name="ap-southeast-1")
+        sns_client = boto3.client("sns", region_name="us-east-1")
         topic_arn = sns_client.create_topic(Name=TOPIC_NAME)["TopicArn"]
 
         with patch.dict(
@@ -149,7 +149,7 @@ class TestAlertDispatch:
             handler.process_transaction(table, tx)
 
         # Confirm that a message was published (moto tracks published messages)
-        sqs = boto3.client("sqs", region_name="ap-southeast-1")
+        sqs = boto3.client("sqs", region_name="us-east-1")
         queue_url = sqs.create_queue(QueueName="alert-test-queue")["QueueUrl"]
         queue_arn = sqs.get_queue_attributes(
             QueueUrl=queue_url, AttributeNames=["QueueArn"]
@@ -163,7 +163,7 @@ class TestAlertDispatch:
     def test_low_risk_transaction_does_not_publish_alert(self):
         table = create_test_table()
 
-        sns_client = boto3.client("sns", region_name="ap-southeast-1")
+        sns_client = boto3.client("sns", region_name="us-east-1")
         topic_arn = sns_client.create_topic(Name=TOPIC_NAME)["TopicArn"]
 
         publish_calls = []
@@ -197,7 +197,7 @@ class TestAlertDispatch:
     def test_alert_subject_contains_risk_level_and_account(self):
         table = create_test_table()
 
-        sns_client = boto3.client("sns", region_name="ap-southeast-1")
+        sns_client = boto3.client("sns", region_name="us-east-1")
         topic_arn = sns_client.create_topic(Name=TOPIC_NAME)["TopicArn"]
 
         subjects = []
@@ -268,8 +268,8 @@ class TestLambdaHandler:
                         "messageAttributes": {},
                         "md5OfBody": "",
                         "eventSource": "aws:sqs",
-                        "eventSourceARN": "arn:aws:sqs:ap-southeast-1:123456789012:queue",
-                        "awsRegion": "ap-southeast-1",
+                        "eventSourceARN": "arn:aws:sqs:us-east-1:123456789012:queue",
+                        "awsRegion": "us-east-1",
                     }
                 ]
             }
@@ -296,8 +296,8 @@ class TestLambdaHandler:
                 "messageAttributes": {},
                 "md5OfBody": "",
                 "eventSource": "aws:sqs",
-                "eventSourceARN": "arn:aws:sqs:ap-southeast-1:123456789012:queue",
-                "awsRegion": "ap-southeast-1",
+                "eventSourceARN": "arn:aws:sqs:us-east-1:123456789012:queue",
+                "awsRegion": "us-east-1",
             }
 
             event = make_sqs_event([good_tx])
