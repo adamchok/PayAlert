@@ -37,12 +37,13 @@ MYT = timezone(timedelta(hours=8))  # Malaysia Time (UTC+8)
 
 # ── Defaults (overridden by env / CLI) ───────────────────────────────────────
 
-AWS_REGION    = os.getenv("AWS_REGION",       "us-east-1")
-SQS_QUEUE_URL = os.getenv("SQS_QUEUE_URL",    "")
-MIN_INTERVAL  = float(os.getenv("MIN_INTERVAL",    "0.1"))
-MAX_INTERVAL  = float(os.getenv("MAX_INTERVAL",    "2.0"))
-BURST_MIN     = int(os.getenv("BURST_SIZE_MIN",    "1"))
-BURST_MAX     = int(os.getenv("BURST_SIZE_MAX",    "5"))
+AWS_REGION      = os.getenv("AWS_REGION",       "us-east-1")
+SQS_QUEUE_URL   = os.getenv("SQS_QUEUE_URL",    "")
+MIN_INTERVAL    = float(os.getenv("MIN_INTERVAL",    "0.1"))
+MAX_INTERVAL    = float(os.getenv("MAX_INTERVAL",    "2.0"))
+BURST_MIN       = int(os.getenv("BURST_SIZE_MIN",    "1"))
+BURST_MAX       = int(os.getenv("BURST_SIZE_MAX",    "5"))
+CUSTOMER_EMAIL  = os.getenv("CUSTOMER_EMAIL", "customer@example.com")
 
 # ── FX Rates (to MYR) ────────────────────────────────────────────────────────
 
@@ -73,6 +74,7 @@ ACCOUNTS: list[dict] = [
         "homeState":    "Wilayah Persekutuan",
         "homeCountry":  "MY",
         "tierSpendCap": 5_000.0,
+        "customerEmail": CUSTOMER_EMAIL,
     },
     {
         "accountId":    "ACC-MY-7C8D1E4F",
@@ -85,6 +87,7 @@ ACCOUNTS: list[dict] = [
         "homeState":    "Selangor",
         "homeCountry":  "MY",
         "tierSpendCap": 15_000.0,
+        "customerEmail": CUSTOMER_EMAIL,
     },
     {
         "accountId":    "ACC-MY-2B5E9C1D",
@@ -97,6 +100,7 @@ ACCOUNTS: list[dict] = [
         "homeState":    "Johor",
         "homeCountry":  "MY",
         "tierSpendCap": 2_000.0,
+        "customerEmail": CUSTOMER_EMAIL,
     },
     {
         "accountId":    "ACC-MY-9A6F2D8E",
@@ -109,6 +113,7 @@ ACCOUNTS: list[dict] = [
         "homeState":    "Penang",
         "homeCountry":  "MY",
         "tierSpendCap": 5_000.0,
+        "customerEmail": CUSTOMER_EMAIL,
     },
     {
         "accountId":    "ACC-MY-3D7B0F5A",
@@ -121,6 +126,7 @@ ACCOUNTS: list[dict] = [
         "homeState":    "Perak",
         "homeCountry":  "MY",
         "tierSpendCap": 1_000.0,
+        "customerEmail": CUSTOMER_EMAIL,
     },
     {
         "accountId":    "ACC-MY-1E4C8B7F",
@@ -133,6 +139,7 @@ ACCOUNTS: list[dict] = [
         "homeState":    "Wilayah Persekutuan",
         "homeCountry":  "MY",
         "tierSpendCap": 15_000.0,
+        "customerEmail": CUSTOMER_EMAIL,
     },
     {
         "accountId":    "ACC-MY-6A0D3E2C",
@@ -145,6 +152,7 @@ ACCOUNTS: list[dict] = [
         "homeState":    "Selangor",
         "homeCountry":  "MY",
         "tierSpendCap": 2_000.0,
+        "customerEmail": CUSTOMER_EMAIL,
     },
     {
         "accountId":    "ACC-MY-5F1B9A4D",
@@ -157,6 +165,7 @@ ACCOUNTS: list[dict] = [
         "homeState":    "Selangor",
         "homeCountry":  "MY",
         "tierSpendCap": 5_000.0,
+        "customerEmail": CUSTOMER_EMAIL,
     },
     {
         "accountId":    "ACC-MY-8C2E6D0B",
@@ -169,6 +178,7 @@ ACCOUNTS: list[dict] = [
         "homeState":    "Sabah",
         "homeCountry":  "MY",
         "tierSpendCap": 1_000.0,
+        "customerEmail": CUSTOMER_EMAIL,
     },
     {
         "accountId":    "ACC-MY-0B8F5C3A",
@@ -181,6 +191,7 @@ ACCOUNTS: list[dict] = [
         "homeState":    "Sarawak",
         "homeCountry":  "MY",
         "tierSpendCap": 5_000.0,
+        "customerEmail": CUSTOMER_EMAIL,
     },
 ]
 
@@ -584,6 +595,7 @@ def _assemble_payload(
         "merchantCountry":  merchant["merchantCountry"],
         "customerId":       account["customerId"],
         "customerName":     account["customerName"],
+        "customerEmail":    account["customerEmail"],
         "customerTier":     account["customerTier"],
         "cardLast4":        account["cardLast4"],
         "cardType":         account["cardType"],

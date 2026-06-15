@@ -29,6 +29,7 @@ sns = boto3.client("sns", region_name=_region)
 TABLE_NAME = os.environ["DYNAMODB_TABLE"]
 ALERT_TOPIC_ARN = os.environ.get("ALERT_TOPIC_ARN", "")
 ALERT_RISK_THRESHOLD = int(os.environ.get("ALERT_RISK_THRESHOLD", "50"))
+CUSTOMER_RECEIPT_TOPIC_ARN = os.environ.get("CUSTOMER_RECEIPT_TOPIC_ARN", "")
 # TTL: 90 days from processing time
 TTL_SECONDS = int(os.environ.get("TTL_DAYS", "90")) * 86400
 
@@ -105,8 +106,134 @@ def process_transaction(table: Any, transaction: dict) -> None:
         enriched.get("isFlagged"),
     )
 
+    if CUSTOMER_RECEIPT_TOPIC_ARN:
+        _publish_receipt(enriched)
+
     if ALERT_TOPIC_ARN and risk_score >= ALERT_RISK_THRESHOLD:
         _publish_alert(enriched)
+
+
+# ── SNS receipt ───────────────────────────────────────────────────────────────
+
+_CHANNEL_LABELS: dict[str, str] = {
+    "POS":         "Point of Sale",
+    "CONTACTLESS": "Contactless Tap",
+    "ONLINE":      "Online",
+    "MOBILE_APP":  "Mobile App",
+    "ATM":         "ATM",
+}
+
+_TX_TYPE_LABELS: dict[str, str] = {
+    "PURCHASE":   "Purchase",
+    "PAYMENT":    "Bill Payment",
+    "TRANSFER":   "Fund Transfer",
+    "WITHDRAWAL": "Cash Withdrawal",
+    "REFUND":     "Refund",
+    "TOPUP":      "Wallet Top-Up",
+}
+
+
+def _publish_receipt(transaction: dict) -> None:
+    transaction_id = transaction.get("transactionId", "UNKNOWN")
+    customer_name = transaction.get("customerName", "Valued Customer")
+    customer_email = transaction.get("customerEmail", "")
+    account_id = transaction.get("accountId", "UNKNOWN")
+    card_last4 = transaction.get("cardLast4", "****")
+    card_type = transaction.get("cardType", "CARD")
+    amount = transaction.get("amount", 0)
+    currency = transaction.get("currency", "MYR")
+    amount_myr = transaction.get("amountMYR", amount)
+    merchant_name = transaction.get("merchantName", "Unknown Merchant")
+    merchant_city = transaction.get("merchantCity", "")
+    merchant_country = transaction.get("merchantCountry", "")
+    tx_type = transaction.get("transactionType", "PURCHASE")
+    channel = transaction.get("channel", "")
+    ref_id = transaction.get("referenceId", transaction_id)
+    timestamp = transaction.get("timestamp", "")
+    recipient_name = transaction.get("recipientName", "")
+    recipient_account = transaction.get("recipientAccountId", "")
+
+    if isinstance(amount_myr, Decimal):
+        amount_myr = float(amount_myr)
+    if isinstance(amount, Decimal):
+        amount = float(amount)
+
+    try:
+        dt = datetime.fromisoformat(timestamp)
+        formatted_ts = dt.strftime("%d %b %Y  %I:%M %p %Z").strip()
+    except (ValueError, TypeError):
+        formatted_ts = timestamp
+
+    tx_label = _TX_TYPE_LABELS.get(tx_type, tx_type.replace("_", " ").title())
+    channel_label = _CHANNEL_LABELS.get(channel, channel)
+    card_network = card_type.split("_")[0].title()  # VISA_DEBIT → Visa
+    card_kind = "Credit" if "CREDIT" in card_type else "Debit"
+    card_display = f"{card_network} {card_kind}  ••••{card_last4}"
+
+    if currency != "MYR":
+        amount_line = f"{currency} {amount:,.2f}   (MYR {amount_myr:,.2f})"
+    else:
+        amount_line = f"MYR {amount_myr:,.2f}"
+
+    merchant_location = f"{merchant_city}, {merchant_country}" if merchant_city else merchant_country
+
+    divider = "─" * 42
+
+    if tx_type == "TRANSFER" and recipient_name:
+        payee_block = (
+            f"  TO\n"
+            f"  {recipient_name}\n"
+            f"  {recipient_account}\n"
+        )
+    else:
+        payee_block = (
+            f"  AT\n"
+            f"  {merchant_name}\n"
+            f"  {merchant_location}\n"
+        )
+
+    subject = f"Receipt: {amount_line} – {merchant_name if tx_type != 'TRANSFER' else recipient_name}"
+
+    message = (
+        f"PAYALERT DIGITAL BANK\n"
+        f"Transaction Receipt\n"
+        f"{divider}\n\n"
+        f"Dear {customer_name},\n\n"
+        f"Your {tx_label.lower()} was successful.\n\n"
+        f"  AMOUNT      {amount_line}\n"
+        f"  STATUS      APPROVED\n"
+        f"  DATE        {formatted_ts}\n"
+        f"  TYPE        {tx_label}  ({channel_label})\n\n"
+        f"{divider}\n"
+        f"{payee_block}"
+        f"\n"
+        f"  PAID WITH   {card_display}\n"
+        f"  ACCOUNT     {account_id}\n"
+        f"{divider}\n\n"
+        f"  Reference   {ref_id}\n"
+        f"  Txn ID      {transaction_id}\n"
+        f"  Sent to     {customer_email}\n\n"
+        f"{divider}\n"
+        f"Did not make this transaction?\n"
+        f"Call us immediately: 1-800-88-ALERT\n"
+        f"Email: support@payalert.my\n\n"
+        f"PayAlert Digital Bank  |  payalert.my\n"
+        f"Your Security. Our Priority.\n"
+    )
+
+    try:
+        sns.publish(
+            TopicArn=CUSTOMER_RECEIPT_TOPIC_ARN,
+            Subject=subject[:100],
+            Message=message,
+            MessageAttributes={
+                "transactionType": {"DataType": "String", "StringValue": tx_type},
+                "accountId": {"DataType": "String", "StringValue": account_id},
+            },
+        )
+        logger.info("Receipt dispatched for transaction=%s", transaction_id)
+    except ClientError as exc:
+        logger.error("SNS receipt publish failed for transaction=%s: %s", transaction_id, exc)
 
 
 # ── SNS alert ─────────────────────────────────────────────────────────────────

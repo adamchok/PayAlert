@@ -20,6 +20,13 @@ Parameters:
       Email address to receive HIGH/CRITICAL risk transaction alerts.
       A subscription confirmation will be sent to this address after deploy.
 
+  CustomerReceiptEmail:
+    Type: String
+    Description: >
+      Email address that simulates the customer inbox for transaction receipts.
+      All successfully processed transactions will send a receipt here.
+      A subscription confirmation will be sent to this address after deploy.
+
   AlertRiskThreshold:
     Type: Number
     Default: 50
@@ -276,6 +283,30 @@ Resources:
       Protocol: email
       Endpoint: !Ref AlertEmail
 
+  # ── Customer Receipt Topic ───────────────────────────────────────────────────
+
+  CustomerReceiptTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub payalert-customer-receipts-${Environment}
+      KmsMasterKeyId: !GetAtt PayAlertKmsKey.Arn
+      Tags:
+        - Key: Project
+          Value: Capstone
+        - Key: Group
+          Value: '4'
+        - Key: Scenario
+          Value: PayAlert
+        - Key: Environment
+          Value: !Ref Environment
+
+  CustomerReceiptEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref CustomerReceiptTopic
+      Protocol: email
+      Endpoint: !Ref CustomerReceiptEmail
+
   # ── Lambda: DLQ Processor ───────────────────────────────────────────────────
 
   DLQProcessorFunction:
@@ -342,6 +373,7 @@ Resources:
           DYNAMODB_TABLE: !Ref TransactionsTable
           ALERT_TOPIC_ARN: !Ref AlertTopic
           ALERT_RISK_THRESHOLD: !Ref AlertRiskThreshold
+          CUSTOMER_RECEIPT_TOPIC_ARN: !Ref CustomerReceiptTopic
           TTL_DAYS: !Ref TransactionTTLDays
           ENABLE_FORCE_FAIL: !Ref EnableForceFail
       Role: !Ref LambdaRoleArn
@@ -511,3 +543,9 @@ Outputs:
   TransactionProcessorFunctionName:
     Description: Lambda function name
     Value: !Ref TransactionProcessorFunction
+
+  CustomerReceiptTopicArn:
+    Description: SNS topic ARN for customer transaction receipts
+    Value: !Ref CustomerReceiptTopic
+    Export:
+      Name: !Sub payalert-customer-receipt-topic-arn-${Environment}
