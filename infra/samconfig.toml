@@ -8,7 +8,7 @@ region = "us-east-1"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
 disable_rollback = true
-parameter_overrides = "Environment=\"prod\" AlertEmail=\"adam.c11304@gmail.com\" AlertRiskThreshold=\"50\" TransactionTTLDays=\"90\" LambdaRoleArn=\"arn:aws:iam::REPLACE_WITH_ACCOUNT_ID:role/LabRole\" EnableForceFail=\"false\""
+parameter_overrides = "Environment=\"prod\" AlertEmail=\"REPLACE_WITH_EMAIL\" CustomerReceiptEmail=\"REPLACE_WITH_RECEIPT_EMAIL\" AlertRiskThreshold=\"50\" TransactionTTLDays=\"90\" LambdaRoleArn=\"arn:aws:iam::REPLACE_WITH_ACCOUNT_ID:role/LabRole\" EnableForceFail=\"false\""
 image_repositories = []
 
 [default.global.parameters]

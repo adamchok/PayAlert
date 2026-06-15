@@ -32,7 +32,7 @@ Step-by-step instructions for deploying and running the full PayAlert architectu
                                         ▼
                                   AWS Lambda ◄─── SQS
                                  ┌────┴────┐
-                              DynamoDB   SNS (email)
+                              DynamoDB   SNS (fraud alerts + receipts)
 ```
 
 **SSM** = AWS Systems Manager Session Manager. Provides browser shell access to private EC2 instances via the AWS Console — no SSH, no key pair, no bastion required. SSM traffic routes outbound through the NAT Gateway.
@@ -41,7 +41,7 @@ Step-by-step instructions for deploying and running the full PayAlert architectu
 
 | Component | Where | What it does |
 |---|---|---|
-| Lambda + SQS + DynamoDB + SNS | AWS (via CloudFormation Console) | Processes and stores transactions, sends fraud alerts |
+| Lambda + SQS + DynamoDB + SNS | AWS (via CloudFormation Console) | Processes and stores transactions, sends fraud alerts and customer receipts |
 | Custom VPC | AWS | Isolates all EC2 resources from the default VPC |
 | NAT Gateway | Public Subnet (payalert-public-1) | Outbound internet access for private subnet instances (including SSM) |
 | Transaction Generator | EC2 `payalert-producer-ec2` (Private Subnet) | Streams synthetic transactions to SQS |
@@ -158,7 +158,8 @@ Compress-Archive -Path handler.py, dlq_handler.py, utils.py -DestinationPath fun
 | Parameter | Value |
 |---|---|
 | `Environment` | `dev` |
-| `AlertEmail` | your real email address |
+| `AlertEmail` | your real email address — receives HIGH/CRITICAL risk alerts |
+| `CustomerReceiptEmail` | email address that simulates the customer inbox — receives a receipt for every successfully processed transaction |
 | `AlertRiskThreshold` | `50` |
 | `TransactionTTLDays` | `90` |
 | `LambdaArtifactBucket` | `payalert-artifacts-<your-12-digit-account-id>` |
@@ -188,10 +189,13 @@ Wait for status **CREATE_COMPLETE** (~2–3 minutes).
 | `DLQUrl` | `https://sqs.us-east-1.amazonaws.com/123456789012/payalert-transactions-dlq-dev` |
 | `TransactionsTableName` | `payalert-transactions-dev` |
 | `AlertTopicArn` | `arn:aws:sns:us-east-1:123456789012:payalert-alerts-dev` |
+| `CustomerReceiptTopicArn` | `arn:aws:sns:us-east-1:123456789012:payalert-customer-receipts-dev` |
 
-### 1.6 Confirm the SNS email subscription
+### 1.6 Confirm the SNS email subscriptions
 
-AWS sends a confirmation email to `AlertEmail` immediately after deployment. Open the email from `no-reply@sns.amazonaws.com` and click **Confirm subscription**.
+AWS sends **two** confirmation emails immediately after deployment — one to `AlertEmail` (fraud alerts) and one to `CustomerReceiptEmail` (transaction receipts). Open each email from `no-reply@sns.amazonaws.com` and click **Confirm subscription**.
+
+> Receipts will not be delivered until the `CustomerReceiptEmail` subscription is confirmed.
 
 ---
 
@@ -358,6 +362,8 @@ The setup script runs automatically via EC2 UserData when the network stack is d
 ```bash
 tail -5 /var/log/payalert-setup.log   # last line must be USERDATA_SUCCESS
 ```
+
+> **Customer receipt email:** The generator includes a `CUSTOMER_EMAIL` field in every transaction payload (simulating one shared customer inbox). The setup script defaults this to `customer@example.com`. To use a real address, add `CUSTOMER_EMAIL=your@email.com` to `/opt/payalert/generator.env` and restart the service (`sudo systemctl restart payalert-portal`).
 
 ### 5.1 Verify the service and run a quick test
 
@@ -573,7 +579,8 @@ Open `http://<ALB_DNS_NAME>` in a browser.
 Within 30 seconds:
 
 - The transaction appears on the audit portal dashboard highlighted in red.
-- You receive a `[PayAlert] CRITICAL Risk` email at the address set during stack deployment.
+- You receive a `[PayAlert] CRITICAL Risk` email at `AlertEmail`.
+- You receive a bank-style receipt email at `CustomerReceiptEmail` (sent for every successfully processed transaction, regardless of risk level).
 
 ### 9.6 Verify the DLQ is empty
 
@@ -681,7 +688,8 @@ Ensure the ASG stack is deleted first (above) so no ASG instances remain registe
 | SQS queue | `payalert-transactions-queue-dev` |
 | SQS DLQ | `payalert-transactions-dlq-dev` |
 | DynamoDB table | `payalert-transactions` |
-| SNS topic | `payalert-alerts-dev` |
+| SNS topic (fraud alerts) | `payalert-alerts-dev` |
+| SNS topic (customer receipts) | `payalert-customer-receipts-dev` |
 | Lambda function | `payalert-transaction-processor-dev` |
 | CloudWatch log group | `/aws/lambda/payalert-transaction-processor-dev` |
 | CloudFormation stack (Lambda) | `payalert-stack` |

@@ -12,7 +12,7 @@ EC2 (this script) ──▶ SQS Standard Queue ──▶ Lambda Processor ──
                                                                    Audit Portal
 ```
 
-The generator runs continuously on the EC2 Producer instance inside the PayAlert VPC, sending bursts of 1–5 transactions to the SQS queue at random intervals (0.1–2.0 s by default). All traffic stays on the AWS private network via the SQS VPC Interface Endpoint — no public internet required.
+The generator runs continuously on the EC2 Producer instance inside the PayAlert VPC private subnet, sending bursts of 1–5 transactions to the SQS queue at random intervals (0.1–2.0 s by default). Outbound SQS traffic exits via the NAT Gateway — no inbound internet access required.
 
 ---
 
@@ -46,6 +46,7 @@ The generator produces the six fields required by the Lambda processor, plus an 
 | `merchantCountry` | string (ISO 3166-1 alpha-2) | e.g. `"MY"` |
 | `customerId` | string | e.g. `"CUST-4F291A3B"` |
 | `customerName` | string | e.g. `"Ahmad Farid bin Ismail"` |
+| `customerEmail` | string | Email address embedded in every transaction payload for customer receipt notifications |
 | `customerTier` | string | `STANDARD`, `SILVER`, `GOLD`, `PLATINUM` |
 | `cardLast4` | string | e.g. `"4821"` |
 | `cardType` | string | `VISA_DEBIT`, `VISA_CREDIT`, `MASTERCARD_DEBIT`, `MASTERCARD_CREDIT` |
@@ -144,6 +145,7 @@ Set the following environment variables (or pass as CLI flags):
 | `MAX_INTERVAL` | No | `2.0` | Maximum seconds between bursts |
 | `BURST_SIZE_MIN` | No | `1` | Minimum transactions per burst |
 | `BURST_SIZE_MAX` | No | `5` | Maximum transactions per burst |
+| `CUSTOMER_EMAIL` | No | `customer@example.com` | Email address embedded in every transaction payload — used by Lambda to send customer receipt notifications via SNS |
 
 ---
 
@@ -202,257 +204,6 @@ usage: generator.py [-h] [--mode {stream,batch}] [--count COUNT]
 
 ---
 
-## Deploying to EC2 (AWS Console)
-
-The generator runs on the PayAlert **EC2 Producer** instance. All setup is performed via the AWS Management Console — no AWS CLI or SAM CLI required.
-
-### Step 1 — Create an IAM role for the EC2 instance
-
-The generator sends messages to SQS. The EC2 instance must carry an IAM role with the required permission — no hard-coded access keys are needed on the instance.
-
-1. Open the **[IAM Console](https://console.aws.amazon.com/iam/home#/roles)** → **Roles** → **Create role**.
-2. **Trusted entity type**: AWS service → **EC2** → **Next**.
-3. Skip the managed policies page — click **Next**.
-4. **Role name**: `payalert-generator-ec2-role` → **Create role**.
-5. Open the newly created role → **Permissions** tab → **Add permissions** → **Create inline policy**.
-6. Switch to the **JSON** editor and paste:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "sqs:SendMessage",
-        "sqs:SendMessageBatch",
-        "sqs:GetQueueAttributes"
-      ],
-      "Resource": "arn:aws:sqs:us-east-1:*:payalert-transactions-queue-*"
-    }
-  ]
-}
-```
-
-7. **Policy name**: `PayAlertGeneratorSQSSend` → **Create policy**.
-
----
-
-### Step 2 — Launch the EC2 instance
-
-1. Open the **[EC2 Console](https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#LaunchInstances:)** → **Launch instances**.
-2. Configure the instance:
-
-| Setting | Value |
-|---|---|
-| **Name** | `payalert-generator` |
-| **AMI** | Ubuntu Server 26.04 LTS (64-bit x86) |
-| **Instance type** | `t3.micro` |
-| **Key pair** | Select or create a key pair — download the `.pem` file |
-| **Network** | Default VPC |
-| **Security group** | Allow **SSH (port 22)** from your IP; allow **TCP 5001** if you will run the web UI |
-
-3. Expand **Advanced details** → **IAM instance profile** → select `payalert-generator-ec2-role`.
-4. Click **Launch instance**.
-
----
-
-### Step 3 — Connect to the instance
-
-Wait for the instance status to reach **Running** (approximately 1–2 minutes).
-
-**From Ubuntu / macOS terminal:**
-
-```bash
-chmod 400 your-key.pem
-ssh -i your-key.pem ubuntu@<instance-public-ip>
-```
-
-**Windows (PuTTY)**
-
-Convert the `.pem` to `.ppk` using PuTTYgen, then connect via PuTTY to `ubuntu@<instance-public-ip>`.
-
-To find the public IP: EC2 Console → **Instances** → select `payalert-generator` → **Public IPv4 address**.
-
-Alternatively, use **Session Manager**: EC2 Console → **Instances** → **Connect** → **Session Manager** — no SSH key or open port required.
-
----
-
-### Step 4 — Install Python dependencies
-
-On the instance:
-
-```bash
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y python3 python3-pip python3-venv git
-
-# Transfer the transaction-generator source to the instance
-# Option A — clone from your repository:
-git clone https://github.com/your-org/payalert.git /opt/payalert
-
-# Option B — copy files using SCP from your workstation:
-# scp -i your-key.pem -r transaction-generator/ ubuntu@<ip>:/opt/payalert/
-
-cd /opt/payalert/transaction-generator
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-When running via systemd later, use the venv Python path in `ExecStart`:  
-`/opt/payalert/transaction-generator/.venv/bin/python3`
-
----
-
-### Step 5 — Configure the queue URL and region
-
-Retrieve the `TransactionQueueUrl` from the Lambda stack:
-
-1. Open the **[CloudFormation Console](https://us-east-1.console.aws.amazon.com/cloudformation/home?region=us-east-1)**.
-2. Click `payalert` → **Outputs** tab → copy `TransactionQueueUrl`.
-
-Create the environment file on the instance:
-
-```bash
-sudo tee /opt/payalert/generator.env <<’EOF’
-AWS_REGION=us-east-1
-SQS_QUEUE_URL=<paste TransactionQueueUrl from CloudFormation Outputs>
-EOF
-sudo chmod 600 /opt/payalert/generator.env
-sudo chown root:root /opt/payalert/generator.env
-```
-
-Replace the `SQS_QUEUE_URL` value with the actual URL from the CloudFormation outputs.
-
----
-
-### How to start generation
-
-Pick one of the following depending on whether you want a one-off manual run or a service that survives logout and reboot.
-
-#### A. One-off test in the foreground
-
-Confirms SQS permissions and queue URL before you background the process:
-
-```bash
-cd /opt/payalert/transaction-generator
-export AWS_REGION=us-east-1
-export SQS_QUEUE_URL="<paste TransactionQueueUrl from CloudFormation Outputs>"
-python3 generator.py --verbose
-```
-
-Stop with `Ctrl+C`. To verify payload shape without calling AWS, use `python3 generator.py --dry-run` first.
-
-#### B. Continuous stream in the background (`nohup`)
-
-Use this when you want the default behaviour (random bursts to SQS every `MIN_INTERVAL`–`MAX_INTERVAL` seconds):
-
-```bash
-cd /opt/payalert/transaction-generator
-export AWS_REGION=us-east-1
-export SQS_QUEUE_URL="<paste TransactionQueueUrl from CloudFormation Outputs>"
-
-nohup python3 generator.py \
-  --min-interval 0.1 --max-interval 2.0 \
-  >> /opt/payalert/transaction-generator/generator.log 2>&1 &
-
-echo "Generator PID: $!"
-```
-
-View logs: `tail -f /opt/payalert/transaction-generator/generator.log`. Find/stop the process: `pgrep -af generator.py` then `kill <pid>`.
-
-Optional flags (same as local): `--fraud-mode`, `--burst-min` / `--burst-max`, or `--mode batch --count N` for a fixed batch instead of an endless stream.
-
-#### C. Production: `systemd` service (survives reboot)
-
-Create the unit file:
-
-```bash
-sudo tee /etc/systemd/system/payalert-generator.service > /dev/null <<'EOF'
-[Unit]
-Description=PayAlert Transaction Generator
-After=network.target
-
-[Service]
-Type=simple
-User=ubuntu
-WorkingDirectory=/opt/payalert/transaction-generator
-ExecStart=/opt/payalert/transaction-generator/.venv/bin/python3 generator.py
-EnvironmentFile=/opt/payalert/generator.env
-Restart=on-failure
-RestartSec=5s
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-```
-
-Enable and start:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now payalert-generator
-sudo systemctl status payalert-generator
-sudo journalctl -u payalert-generator -f
-```
-
-Stop or disable:
-
-```bash
-sudo systemctl stop payalert-generator
-sudo systemctl disable payalert-generator
-```
-
-#### D. Web UI (`app.py`)
-
-The generator ships with a browser-based control panel (`app.py`) that lets you start and stop the transaction stream, adjust throughput, and watch live log output — without needing to SSH in for routine operations.
-
-**Run the web UI in the foreground:**
-
-```bash
-cd /opt/payalert/transaction-generator
-source .venv/bin/activate
-export $(cat /opt/payalert/generator.env | xargs)
-ENVIRONMENT=dev python3 app.py
-```
-
-Open `http://<instance-public-ip>:5001` in your browser.
-
-**Run as a systemd service:**
-
-```bash
-sudo tee /etc/systemd/system/payalert-generator-ui.service > /dev/null <<'EOF'
-[Unit]
-Description=PayAlert Generator Web UI
-After=network.target
-
-[Service]
-Type=simple
-User=ubuntu
-WorkingDirectory=/opt/payalert/transaction-generator
-ExecStart=/opt/payalert/transaction-generator/.venv/bin/python3 app.py
-EnvironmentFile=/opt/payalert/generator.env
-Environment=ENVIRONMENT=prod
-Restart=on-failure
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable --now payalert-generator-ui
-```
-
-> The web UI and the CLI generator are independent — do not run both simultaneously or they will compete for the same SQS send rate.
-
-#### Connect with Session Manager
-
-If the instance only has SSM (no SSH), open a shell in the console: **EC2 → Instances → Connect → Session Manager**, then run the same `cd`, `export`, and `python3 generator.py` commands as in sections A–D above.
-
----
-
 ## Sample Output
 
 ```json
@@ -474,6 +225,7 @@ If the instance only has SSM (no SSH), open a shell in the console: **EC2 → In
   "merchantCountry": "MY",
   "customerId": "CUST-4F291A3B",
   "customerName": "Ahmad Farid bin Ismail",
+  "customerEmail": "customer@example.com",
   "customerTier": "GOLD",
   "cardLast4": "4821",
   "cardType": "VISA_DEBIT",

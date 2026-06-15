@@ -3,4 +3,7 @@ WORKDIR /app
 COPY transaction-processor/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY transaction-processor/handler.py ./transaction-processor/handler.py
+COPY transaction-processor/utils.py ./transaction-processor/utils.py
+COPY transaction-processor/dlq_handler.py ./transaction-processor/dlq_handler.py
 COPY tests/worker.py ./tests/worker.py
+CMD ["python3", "tests/worker.py"]
