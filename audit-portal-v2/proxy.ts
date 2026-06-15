@@ -1,18 +1,25 @@
-import { auth } from '@/auth'
 import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 
-export default auth((req) => {
-  if (req.auth) return NextResponse.next()
+export default function proxy(request: NextRequest) {
+  const isAuthenticated =
+    request.cookies.has('__Secure-authjs.session-token') ||
+    request.cookies.has('authjs.session-token')
 
-  if (req.nextUrl.pathname.startsWith('/api/')) {
+  if (isAuthenticated) return NextResponse.next()
+
+  if (request.nextUrl.pathname.startsWith('/api/')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const callbackPath = req.nextUrl.pathname === '/' ? '/dashboard' : req.nextUrl.pathname
-  const loginUrl = new URL('/login', req.url)
+  const callbackPath =
+    request.nextUrl.pathname === '/' ? '/dashboard' : request.nextUrl.pathname
+  const loginUrl = request.nextUrl.clone()
+  loginUrl.pathname = '/login'
+  loginUrl.search = ''
   loginUrl.searchParams.set('callbackUrl', callbackPath)
   return NextResponse.redirect(loginUrl)
-})
+}
 
 export const config = {
   matcher: ['/((?!login|api/auth|api/health|_next/static|_next/image|favicon\\.ico).*)'],
